@@ -3,240 +3,203 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#1a5f2a">
+  <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Dimple</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: { 850: '#1e293b', 900: '#0f172a', 950: '#020617' },
+            emerald: { 450: '#10b981' }
+          }
+        }
+      }
+    }
+  </script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0d1f0d;
-      color: #fff;
-      height: 100vh;
-      overflow: hidden;
-      touch-action: manipulation;
-    }
-    
-    #app {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    
-    .screen {
-      flex: 1;
-      display: none;
-      flex-direction: column;
-      padding: 16px;
-      overflow-y: auto;
-    }
-    
+    * { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .screen { display: none; }
     .screen.active { display: flex; }
     
-    /* Header */
-    .header {
-      text-align: center;
-      padding: 12px 0;
-      border-bottom: 1px solid #1a5f2a;
-      margin-bottom: 16px;
+    /* Custom scrollbar hide */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Button press animation */
+    .btn-press:active { transform: scale(0.95); transition: transform 0.05s; }
+    
+    /* Selected state */
+    .club-selected { ring: 2px; ring-color: #10b981; background: rgba(16, 185, 129, 0.2); }
+    
+    /* Shot indicator pulse */
+    @keyframes pulse-green {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
     }
-    
-    .header h1 {
-      font-size: 1.5rem;
-      color: #4ade80;
-    }
-    
-    .header .sub {
-      font-size: 0.875rem;
-      color: #86efac;
-      opacity: 0.8;
-    }
-    
-    /* Buttons */
-    .btn {
-      background: #1a5f2a;
-      color: #fff;
-      border: 2px solid #22c55e;
-      border-radius: 12px;
-      padding: 16px 24px;
-      font-size: 1.125rem;
-      font-weight: 600;
-      cursor: pointer;
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: transparent;
-      transition: all 0.15s;
-    }
-    
-    .btn:active {
-      transform: scale(0.96);
-      background: #15803d;
-    }
-    
-    .btn.primary {
-      background: #22c55e;
-      color: #0d1f0d;
-    }
-    
-    .btn-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-top: 16px;
-    }
-    
-    .btn-grid .btn {
-      padding: 20px 8px;
-      font-size: 1rem;
-    }
-    
-    /* Shot Entry */
-    .distance-display {
-      text-align: center;
-      font-size: 3rem;
-      font-weight: 700;
-      color: #4ade80;
-      margin: 24px 0;
-    }
-    
-    .distance-label {
-      text-align: center;
-      color: #86efac;
-      font-size: 0.875rem;
-      margin-bottom: 24px;
-    }
-    
-    .section-title {
-      font-size: 0.875rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #86efac;
-      margin: 16px 0 8px;
-    }
-    
-    /* Hole info bar */
-    .hole-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #1a5f2a;
-      padding: 12px 16px;
-      border-radius: 12px;
-      margin-bottom: 16px;
-    }
-    
-    .hole-bar .hole-num {
-      font-size: 1.25rem;
-      font-weight: 700;
-    }
-    
-    .hole-bar .hole-meta {
-      font-size: 0.875rem;
-      opacity: 0.9;
-    }
-    
-    /* Result buttons */
-    .result-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin-top: 12px;
-    }
-    
-    .result-grid .btn {
-      padding: 16px;
-    }
-    
-    /* Utility */
-    .spacer { flex: 1; }
-    
-    .hidden { display: none !important; }
+    .shot-active { animation: pulse-green 2s infinite; }
   </style>
 </head>
-<body>
-  <div id="app">
-    <!-- Home Screen -->
-    <div class="screen active" id="screen-home">
-      <div class="header">
-        <h1>⛳ Dimple</h1>
-        <div class="sub">Golf Intelligence</div>
-      </div>
-      
-      <div class="spacer"></div>
-      
-      <button class="btn primary" onclick="startRound()" style="margin-bottom: 12px;">
-        New Round
-      </button>
-      <button class="btn" onclick="showScreen('screen-history')">
-        Round History
-      </button>
-      <button class="btn" onclick="showScreen('screen-settings')">
-        Settings
-      </button>
-      
-      <div class="spacer"></div>
-    </div>
+<body class="bg-slate-950 text-white h-screen overflow-hidden">
+  <div id="app" class="h-full flex flex-col">
     
-    <!-- Shot Entry Screen -->
-    <div class="screen" id="screen-shot-entry">
-      <div class="hole-bar">
-        <div>
-          <div class="hole-num">Hole <span id="current-hole">1</span></div>
-          <div class="hole-meta">Par <span id="current-par">4</span> • <span id="current-length">350</span>y</div>
+    <!-- HOME SCREEN -->
+    <div class="screen active flex-col h-full" id="screen-home">
+      <div class="flex-1 flex flex-col items-center justify-center px-6">
+        <div class="w-20 h-20 bg-emerald-500 rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/20">
+          <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
         </div>
-        <div class="hole-meta">Shot <span id="current-shot">1</span></div>
+        <h1 class="text-4xl font-bold tracking-tight mb-2">Dimple</h1>
+        <p class="text-slate-400 text-sm">Golf Intelligence</p>
       </div>
       
-      <div class="distance-display" id="distance-display" onclick="editDistance()">—</div>
-      <div class="distance-label">yards to hole (tap to edit)</div>
-      
-      <div class="section-title">Club</div>
-      <div class="btn-grid" id="club-grid">
-        <!-- Populated by JS -->
+      <div class="px-6 pb-8 space-y-3">
+        <button onclick="startRound()" class="btn-press w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 rounded-2xl text-lg transition-colors">
+          New Round
+        </button>
+        <div class="grid grid-cols-2 gap-3">
+          <button onclick="showScreen('screen-history')" class="btn-press bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
+            History
+          </button>
+          <button onclick="showScreen('screen-settings')" class="btn-press bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
+            Settings
+          </button>
+        </div>
       </div>
-      
-      <div class="section-title">Result</div>
-      <div class="result-grid" id="result-grid">
-        <button class="btn" onclick="recordResult('fairway')">Fairway</button>
-        <button class="btn" onclick="recordResult('rough')">Rough</button>
-        <button class="btn" onclick="recordResult('green')">Green</button>
-        <button class="btn" onclick="recordResult('sand')">Bunker</button>
-        <button class="btn" onclick="recordResult('hole')">In Hole</button>
-        <button class="btn" onclick="recordResult('penalty')">Penalty</button>
-      </div>
-      
-      <div class="spacer"></div>
-      
-      <button class="btn" onclick="showScreen('screen-home')" style="margin-top: 16px;">
-        End Round
-      </button>
     </div>
     
-    <!-- History Screen -->
-    <div class="screen" id="screen-history">
-      <div class="header">
-        <h1>Round History</h1>
+    <!-- SHOT ENTRY SCREEN -->
+    <div class="screen flex-col h-full" id="screen-shot-entry">
+      
+      <!-- Top Bar: Hole Info -->
+      <div class="px-4 pt-3 pb-2">
+        <div class="bg-slate-800/80 backdrop-blur rounded-2xl p-3 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center">
+              <span class="text-emerald-400 font-bold text-lg" id="current-hole">1</span>
+            </div>
+            <div>
+              <div class="text-xs text-slate-400 uppercase tracking-wider">Hole</div>
+              <div class="text-sm font-medium">Par <span id="current-par">4</span> • <span id="current-length">350</span>y</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs text-slate-400 uppercase tracking-wider">Shot</div>
+            <div class="text-2xl font-bold text-emerald-400" id="current-shot">1</div>
+          </div>
+        </div>
       </div>
-      <div id="rounds-list">
-        <p style="text-align: center; opacity: 0.6; margin-top: 40px;">No rounds yet</p>
+      
+      <!-- Distance Display -->
+      <div class="px-4 py-2">
+        <button onclick="editDistance()" class="btn-press w-full bg-slate-800/50 border-2 border-dashed border-slate-700 hover:border-emerald-500/50 rounded-2xl p-4 transition-colors">
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Distance to Hole</div>
+          <div class="flex items-baseline justify-center gap-1">
+            <span class="text-5xl font-bold" id="distance-display">—</span>
+            <span class="text-lg text-slate-500">yds</span>
+          </div>
+          <div class="text-xs text-slate-500 mt-1">tap to edit</div>
+        </button>
       </div>
-      <button class="btn" onclick="showScreen('screen-home')" style="margin-top: 16px;">
-        Back
-      </button>
+      
+      <!-- Club Selection -->
+      <div class="px-4 py-2 flex-1 flex flex-col min-h-0">
+        <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Select Club</div>
+        <div class="flex-1 overflow-y-auto no-scrollbar">
+          <div class="grid grid-cols-4 gap-2" id="club-grid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Result Selection -->
+      <div class="px-4 py-2">
+        <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Result</div>
+        <div class="grid grid-cols-3 gap-2" id="result-grid">
+          <button onclick="recordResult('fairway')" class="btn-press bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 py-3 rounded-xl text-sm font-medium text-emerald-300 transition-colors">
+            Fairway
+          </button>
+          <button onclick="recordResult('rough')" class="btn-press bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 py-3 rounded-xl text-sm font-medium text-amber-300 transition-colors">
+            Rough
+          </button>
+          <button onclick="recordResult('green')" class="btn-press bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 py-3 rounded-xl text-sm font-medium text-green-300 transition-colors">
+            Green
+          </button>
+          <button onclick="recordResult('sand')" class="btn-press bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 py-3 rounded-xl text-sm font-medium text-yellow-300 transition-colors">
+            Bunker
+          </button>
+          <button onclick="recordResult('hole')" class="btn-press bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-xl text-sm font-bold transition-colors">
+            In Hole!
+          </button>
+          <button onclick="recordResult('penalty')" class="btn-press bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 py-3 rounded-xl text-sm font-medium text-red-300 transition-colors">
+            Penalty
+          </button>
+        </div>
+      </div>
+      
+      <!-- Bottom Actions -->
+      <div class="px-4 pb-4 pt-2 flex items-center justify-between">
+        <button onclick="undoLastShot()" class="btn-press text-slate-500 hover:text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition-colors" id="undo-btn" style="opacity: 0.3; pointer-events: none;">
+          ↩ Undo
+        </button>
+        <button onclick="confirmEndRound()" class="btn-press text-slate-600 hover:text-red-400 text-xs font-medium px-3 py-2 rounded-lg transition-colors">
+          End Round
+        </button>
+      </div>
     </div>
     
-    <!-- Settings Screen -->
-    <div class="screen" id="screen-settings">
-      <div class="header">
-        <h1>Settings</h1>
+    <!-- HISTORY SCREEN -->
+    <div class="screen flex-col h-full" id="screen-history">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="text-2xl font-bold">Round History</h2>
       </div>
-      <p style="opacity: 0.8; margin-bottom: 16px;">Coming soon: export, courses, handicap</p>
-      <button class="btn" onclick="showScreen('screen-home')">
-        Back
-      </button>
+      <div class="flex-1 overflow-y-auto px-4" id="rounds-list">
+        <p class="text-slate-500 text-center mt-20">No rounds yet</p>
+      </div>
+      <div class="px-4 pb-6 pt-2">
+        <button onclick="showScreen('screen-home')" class="btn-press w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
+          Back
+        </button>
+      </div>
+    </div>
+    
+    <!-- SETTINGS SCREEN -->
+    <div class="screen flex-col h-full" id="screen-settings">
+      <div class="px-4 pt-4 pb-2">
+        <h2 class="text-2xl font-bold">Settings</h2>
+      </div>
+      <div class="flex-1 px-4">
+        <p class="text-slate-500 mt-8">Coming soon: export, courses, handicap</p>
+      </div>
+      <div class="px-4 pb-6 pt-2">
+        <button onclick="showScreen('screen-home')" class="btn-press w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
+          Back
+        </button>
+      </div>
+    </div>
+    
+    <!-- CONFIRMATION MODAL -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+      <div class="bg-slate-800 rounded-2xl p-6 mx-4 max-w-sm w-full">
+        <h3 class="text-lg font-bold mb-2" id="confirm-title">Confirm</h3>
+        <p class="text-slate-400 text-sm mb-6" id="confirm-message">Are you sure?</p>
+        <div class="flex gap-3">
+          <button onclick="closeModal()" class="btn-press flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-xl text-sm font-medium transition-colors">
+            Cancel
+          </button>
+          <button onclick="modalConfirm()" class="btn-press flex-1 bg-red-500 hover:bg-red-400 text-white py-3 rounded-xl text-sm font-bold transition-colors" id="confirm-action-btn">
+            Confirm
+          </button>
+        </div>
+      </div>
     </div>
   </div>
   
