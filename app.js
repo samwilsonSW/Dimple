@@ -73,6 +73,7 @@ function startHole(holeNum) {
     shots: []
   };
   currentShot = 1;
+  manualDistanceSet = false;
   
   updateHoleDisplay();
   startGpsWatch();
@@ -94,14 +95,32 @@ function startGpsWatch() {
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const dist = estimateDistanceToHole(pos.coords);
-        document.getElementById('distance-display').textContent = dist || '—';
+        if (dist && !manualDistanceSet) {
+          document.getElementById('distance-display').textContent = dist;
+        }
       },
       (err) => {
-        console.log('GPS error:', err);
-        document.getElementById('distance-display').textContent = '—';
+        console.log('GPS not available (expected on desktop):', err.message);
+        // Keep showing manual entry or '—'
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
     );
+  } else {
+    console.log('Geolocation not supported');
+  }
+}
+
+let manualDistanceSet = false;
+
+function editDistance() {
+  const current = document.getElementById('distance-display').textContent;
+  const input = prompt('Distance to hole (yards):', current === '—' ? '' : current);
+  if (input !== null && input.trim() !== '') {
+    const yards = parseInt(input);
+    if (!isNaN(yards) && yards > 0) {
+      document.getElementById('distance-display').textContent = yards;
+      manualDistanceSet = true;
+    }
   }
 }
 
