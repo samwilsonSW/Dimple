@@ -62,14 +62,14 @@
       </div>
       
       <div class="px-6 pb-8 space-y-3">
-        <button onclick="startRound()" class="btn-press w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 rounded-2xl text-lg transition-colors">
+        <button id="btn-new-round" class="btn-press w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 rounded-2xl text-lg transition-colors">
           New Round
         </button>
         <div class="grid grid-cols-2 gap-3">
-          <button onclick="showScreen('screen-history')" class="btn-press bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
+          <button id="btn-history" class="btn-press bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
             History
           </button>
-          <button onclick="showScreen('screen-settings')" class="btn-press bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
+          <button id="btn-settings" class="btn-press bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
             Settings
           </button>
         </div>
@@ -208,6 +208,7 @@
       navigator.serviceWorker.register('/sw.js');
     }
   </script>
-  <script src="app.js?v=2"></script>
+  <script src="api.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

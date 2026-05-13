@@ -14,17 +14,44 @@ let currentShotNum = null;
 let selectedClub = null;
 let manualDistance = null;
 let modalCallback = null;
+let isOnline = true;
+let pendingSync = []; // Offline queue
 
 // Initialize
 function init() {
   renderClubGrid();
+  bindEvents();
+  checkConnectivity();
   loadRounds();
+}
+
+// Check if backend is reachable
+async function checkConnectivity() {
+  try {
+    const health = await DimpleAPI.checkHealth();
+    isOnline = health.status === 'healthy';
+    console.log('Backend status:', health.status);
+  } catch (err) {
+    isOnline = false;
+    console.log('Backend unreachable, using localStorage fallback');
+  }
+}
+
+// Bind events
+function bindEvents() {
+  document.getElementById('btn-new-round')?.addEventListener('click', startRound);
+  document.getElementById('btn-history')?.addEventListener('click', () => showScreen('screen-history'));
+  document.getElementById('btn-settings')?.addEventListener('click', () => showScreen('screen-settings'));
 }
 
 // Navigation
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  
+  if (id === 'screen-history') {
+    loadRounds();
+  }
 }
 
 // Club grid
@@ -46,17 +73,34 @@ function selectClub(club) {
 }
 
 // Start round
-function startRound() {
-  currentRound = {
-    round_id: generateId(),
-    round_date: new Date().toISOString().split('T')[0],
-    start_time: new Date().toISOString(),
-    course: { name: 'Unknown Course', tee_box: 'Unknown' },
-    player: { handicap_index: null },
-    holes: []
-  };
-  startHole(1);
-  showScreen('screen-shot-entry');
+async function startRound() {
+  try {
+    if (isOnline) {
+      // Create round on backend
+      const round = await DimpleAPI.RoundAPI.create();
+      currentRound = {
+        ...round,
+        holes: [],
+      };
+    } else {
+      // Offline fallback
+      currentRound = {
+        round_id: generateId(),
+        round_date: new Date().toISOString().split('T')[0],
+        start_time: new Date().toISOString(),
+        course: { name: 'Unknown Course', tee_box: 'Unknown' },
+        player: { handicap_index: null },
+        holes: [],
+        _offline: true,
+      };
+    }
+    
+    startHole(1);
+    showScreen('screen-shot-entry');
+  } catch (err) {
+    console.error('Failed to start round:', err);
+    alert('Failed to start round. Check your connection.');
+  }
 }
 
 // Start hole
@@ -111,8 +155,8 @@ function editDistance() {
   }
 }
 
-// Record shot - INSTANT, no delays
-function recordResult(result) {
+// Record shot
+async function recordResult(result) {
   if (!selectedClub) {
     shakeElement(document.getElementById('club-grid'));
     return;
@@ -132,8 +176,8 @@ function recordResult(result) {
   // Capture GPS async (don't block)
   captureGps(shot);
   
-  // Save immediately
-  saveShot(shot);
+  // Save shot
+  await saveShot(shot, result);
 }
 
 function captureGps(shot) {
@@ -149,7 +193,7 @@ function captureGps(shot) {
   }
 }
 
-function saveShot(shot) {
+async function saveShot(shot, resultCategory) {
   currentHole.shots.push(shot);
   
   // Update previous shot's after distance
@@ -158,7 +202,36 @@ function saveShot(shot) {
     if (prev) prev.distance_to_hole_after = manualDistance;
   }
   
-  if (shot.shot_result.category === 'hole') {
+  // Sync to backend if online
+  if (isOnline && currentRound.round_id && !currentRound._offline) {
+    try {
+      // Ensure hole exists on backend
+      const existingHole = currentRound.holes?.find(h => h.hole_number === currentHole.hole_number);
+      if (!existingHole) {
+        await DimpleAPI.RoundAPI.addHole(currentRound.round_id, {
+          hole_number: currentHole.hole_number,
+          par: currentHole.par,
+          length_yards: currentHole.length_yards,
+        });
+      }
+      
+      // Add shot to backend
+      await DimpleAPI.RoundAPI.addShot(currentRound.round_id, currentHole.hole_number, {
+        shot_number: shot.shot_number,
+        club: shot.club,
+        distance_to_hole_before: shot.distance_to_hole_before,
+        distance_to_hole_after: shot.distance_to_hole_after,
+        shot_result: shot.shot_result,
+        gps: shot.gps,
+      });
+    } catch (err) {
+      console.error('Failed to sync shot:', err);
+      // Queue for later sync
+      pendingSync.push({ type: 'shot', roundId: currentRound.round_id, data: shot });
+    }
+  }
+  
+  if (resultCategory === 'hole') {
     finishHole();
   } else {
     nextShot();
@@ -173,19 +246,30 @@ function nextShot() {
   clearClubSelection();
 }
 
-function finishHole() {
+async function finishHole() {
   currentRound.holes.push(currentHole);
   
   if (currentHole.hole_number < 18) {
     startHole(currentHole.hole_number + 1);
   } else {
-    finishRound();
+    await finishRound();
   }
 }
 
-function finishRound() {
+async function finishRound() {
   currentRound.end_time = new Date().toISOString();
-  saveRound(currentRound);
+  
+  if (isOnline && currentRound.round_id && !currentRound._offline) {
+    try {
+      await DimpleAPI.RoundAPI.finish(currentRound.round_id);
+    } catch (err) {
+      console.error('Failed to finish round on backend:', err);
+    }
+  } else {
+    // Save locally
+    saveRoundLocal(currentRound);
+  }
+  
   showModal('Round Complete!', 'Great round! Save it?', () => {
     closeModal();
     showScreen('screen-home');
@@ -211,12 +295,24 @@ function undoLastShot() {
 
 // End round with confirmation
 function confirmEndRound() {
-  showModal('End Round?', 'Your progress will be saved.', () => {
+  showModal('End Round?', 'Your progress will be saved.', async () => {
     currentRound.end_time = new Date().toISOString();
+    
     if (currentHole.shots.length > 0) {
       currentRound.holes.push(currentHole);
     }
-    saveRound(currentRound);
+    
+    if (isOnline && currentRound.round_id && !currentRound._offline) {
+      try {
+        await DimpleAPI.RoundAPI.finish(currentRound.round_id);
+      } catch (err) {
+        console.error('Failed to finish round:', err);
+        saveRoundLocal(currentRound);
+      }
+    } else {
+      saveRoundLocal(currentRound);
+    }
+    
     closeModal();
     showScreen('screen-home');
     loadRounds();
@@ -249,14 +345,14 @@ function shakeElement(el) {
   setTimeout(() => el.style.transform = 'translateX(0)', 200);
 }
 
-// Storage
-function saveRound(round) {
-  const rounds = getRounds();
+// LocalStorage fallback (for offline mode)
+function saveRoundLocal(round) {
+  const rounds = getRoundsLocal();
   rounds.push(round);
   localStorage.setItem('dimple_rounds', JSON.stringify(rounds));
 }
 
-function getRounds() {
+function getRoundsLocal() {
   try {
     return JSON.parse(localStorage.getItem('dimple_rounds') || '[]');
   } catch {
@@ -264,23 +360,66 @@ function getRounds() {
   }
 }
 
-function loadRounds() {
-  const rounds = getRounds();
+// Load rounds — prefer backend, fallback to localStorage
+async function loadRounds() {
   const list = document.getElementById('rounds-list');
   
-  if (rounds.length === 0) {
+  if (isOnline) {
+    try {
+      const rounds = await DimpleAPI.RoundAPI.list();
+      renderRoundsList(rounds);
+      return;
+    } catch (err) {
+      console.error('Failed to load from backend:', err);
+    }
+  }
+  
+  // Fallback to localStorage
+  const rounds = getRoundsLocal();
+  renderRoundsListLocal(rounds);
+}
+
+function renderRoundsList(rounds) {
+  const list = document.getElementById('rounds-list');
+  
+  if (!rounds || rounds.length === 0) {
+    list.innerHTML = '<p class="text-slate-500 text-center mt-20">No rounds yet</p>';
+    return;
+  }
+  
+  list.innerHTML = rounds.map(r => `
+    <div class="bg-slate-800/50 rounded-xl p-4 mb-3" data-round-id="${r.round_id}">
+      <div class="flex justify-between items-start">
+        <div>
+          <div class="font-semibold">${r.course_name || 'Unknown Course'}</div>
+          <div class="text-sm text-slate-400">${r.round_date}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-2xl font-bold text-emerald-400">${r.total_holes || 0}</div>
+          <div class="text-xs text-slate-500">holes</div>
+        </div>
+      </div>
+      <div class="text-sm text-slate-500 mt-2">${r.total_shots || 0} shots${r.total_score ? ` • Score: ${r.total_score}` : ''}</div>
+    </div>
+  `).join('');
+}
+
+function renderRoundsListLocal(rounds) {
+  const list = document.getElementById('rounds-list');
+  
+  if (!rounds || rounds.length === 0) {
     list.innerHTML = '<p class="text-slate-500 text-center mt-20">No rounds yet</p>';
     return;
   }
   
   list.innerHTML = rounds.slice().reverse().map(r => {
-    const totalShots = r.holes.reduce((sum, h) => sum + h.shots.length, 0);
-    const totalHoles = r.holes.length;
+    const totalShots = r.holes ? r.holes.reduce((sum, h) => sum + (h.shots ? h.shots.length : 0), 0) : 0;
+    const totalHoles = r.holes ? r.holes.length : 0;
     return `
       <div class="bg-slate-800/50 rounded-xl p-4 mb-3">
         <div class="flex justify-between items-start">
           <div>
-            <div class="font-semibold">${r.course.name}</div>
+            <div class="font-semibold">${r.course?.name || 'Unknown Course'}</div>
             <div class="text-sm text-slate-400">${r.round_date}</div>
           </div>
           <div class="text-right">
