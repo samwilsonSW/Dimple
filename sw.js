@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dimple-v2';
+const CACHE_NAME = 'dimple-v3';
 const urlsToCache = [
   '/',
   '/index.html',
