@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a5f2a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Dimple</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1f0d;
+      color: #fff;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+    
+    #app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .screen {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    
+    .screen.active { display: flex; }
+    
+    /* Header */
+    .header {
+      text-align: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #1a5f2a;
+      margin-bottom: 16px;
+    }
+    
+    .header h1 {
+      font-size: 1.5rem;
+      color: #4ade80;
+    }
+    
+    .header .sub {
+      font-size: 0.875rem;
+      color: #86efac;
+      opacity: 0.8;
+    }
+    
+    /* Buttons */
+    .btn {
+      background: #1a5f2a;
+      color: #fff;
+      border: 2px solid #22c55e;
+      border-radius: 12px;
+      padding: 16px 24px;
+      font-size: 1.125rem;
+      font-weight: 600;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: all 0.15s;
+    }
+    
+    .btn:active {
+      transform: scale(0.96);
+      background: #15803d;
+    }
+    
+    .btn.primary {
+      background: #22c55e;
+      color: #0d1f0d;
+    }
+    
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+    
+    .btn-grid .btn {
+      padding: 20px 8px;
+      font-size: 1rem;
+    }
+    
+    /* Shot Entry */
+    .distance-display {
+      text-align: center;
+      font-size: 3rem;
+      font-weight: 700;
+      color: #4ade80;
+      margin: 24px 0;
+    }
+    
+    .distance-label {
+      text-align: center;
+      color: #86efac;
+      font-size: 0.875rem;
+      margin-bottom: 24px;
+    }
+    
+    .section-title {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #86efac;
+      margin: 16px 0 8px;
+    }
+    
+    /* Hole info bar */
+    .hole-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1a5f2a;
+      padding: 12px 16px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .hole-bar .hole-num {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    
+    .hole-bar .hole-meta {
+      font-size: 0.875rem;
+      opacity: 0.9;
+    }
+    
+    /* Result buttons */
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 12px;
+    }
+    
+    .result-grid .btn {
+      padding: 16px;
+    }
+    
+    /* Utility */
+    .spacer { flex: 1; }
+    
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Home Screen -->
+    <div class="screen active" id="screen-home">
+      <div class="header">
+        <h1>⛳ Dimple</h1>
+        <div class="sub">Golf Intelligence</div>
+      </div>
+      
+      <div class="spacer"></div>
+      
+      <button class="btn primary" onclick="startRound()" style="margin-bottom: 12px;">
+        New Round
+      </button>
+      <button class="btn" onclick="showScreen('screen-history')">
+        Round History
+      </button>
+      <button class="btn" onclick="showScreen('screen-settings')">
+        Settings
+      </button>
+      
+      <div class="spacer"></div>
+    </div>
+    
+    <!-- Shot Entry Screen -->
+    <div class="screen" id="screen-shot-entry">
+      <div class="hole-bar">
+        <div>
+          <div class="hole-num">Hole <span id="current-hole">1</span></div>
+          <div class="hole-meta">Par <span id="current-par">4</span> • <span id="current-length">350</span>y</div>
+        </div>
+        <div class="hole-meta">Shot <span id="current-shot">1</span></div>
+      </div>
+      
+      <div class="distance-display" id="distance-display">—</div>
+      <div class="distance-label">yards to hole</div>
+      
+      <div class="section-title">Club</div>
+      <div class="btn-grid" id="club-grid">
+        <!-- Populated by JS -->
+      </div>
+      
+      <div class="section-title">Result</div>
+      <div class="result-grid" id="result-grid">
+        <button class="btn" onclick="recordResult('fairway')">Fairway</button>
+        <button class="btn" onclick="recordResult('rough')">Rough</button>
+        <button class="btn" onclick="recordResult('green')">Green</button>
+        <button class="btn" onclick="recordResult('sand')">Bunker</button>
+        <button class="btn" onclick="recordResult('hole')">In Hole</button>
+        <button class="btn" onclick="recordResult('penalty')">Penalty</button>
+      </div>
+      
+      <div class="spacer"></div>
+      
+      <button class="btn" onclick="showScreen('screen-home')" style="margin-top: 16px;">
+        End Round
+      </button>
+    </div>
+    
+    <!-- History Screen -->
+    <div class="screen" id="screen-history">
+      <div class="header">
+        <h1>Round History</h1>
+      </div>
+      <div id="rounds-list">
+        <p style="text-align: center; opacity: 0.6; margin-top: 40px;">No rounds yet</p>
+      </div>
+      <button class="btn" onclick="showScreen('screen-home')" style="margin-top: 16px;">
+        Back
+      </button>
+    </div>
+    
+    <!-- Settings Screen -->
+    <div class="screen" id="screen-settings">
+      <div class="header">
+        <h1>Settings</h1>
+      </div>
+      <p style="opacity: 0.8; margin-bottom: 16px;">Coming soon: export, courses, handicap</p>
+      <button class="btn" onclick="showScreen('screen-home')">
+        Back
+      </button>
+    </div>
+  </div>
+  
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
