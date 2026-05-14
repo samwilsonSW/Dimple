@@ -15,7 +15,10 @@ let selectedClub = null;
 let manualDistance = null;
 let modalCallback = null;
 let isOnline = true;
-let pendingSync = []; // Offline queue
+let pendingSync = [];
+let isOnGreen = false;
+let puttCount = 1;
+let tempHoleInfo = null; // For hole info screen
 
 // Initialize
 function init() {
@@ -47,7 +50,8 @@ function bindEvents() {
 // Navigation
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const screen = document.getElementById(id);
+  if (screen) screen.classList.add('active');
   
   if (id === 'screen-history') {
     loadRounds();
@@ -57,6 +61,7 @@ function showScreen(id) {
 // Club grid
 function renderClubGrid() {
   const grid = document.getElementById('club-grid');
+  if (!grid) return;
   grid.innerHTML = CLUBS.map(club => 
     `<button class="btn-press bg-slate-700 hover:bg-slate-600 py-3 rounded-xl text-sm font-medium transition-colors club-btn" data-club="${club}" onclick="selectClub('${club}')">${club}</button>`
   ).join('');
@@ -76,14 +81,12 @@ function selectClub(club) {
 async function startRound() {
   try {
     if (isOnline) {
-      // Create round on backend
       const round = await DimpleAPI.RoundAPI.create();
       currentRound = {
         ...round,
         holes: [],
       };
     } else {
-      // Offline fallback
       currentRound = {
         round_id: generateId(),
         round_date: new Date().toISOString().split('T')[0],
@@ -108,16 +111,19 @@ function startHole(holeNum) {
   currentHole = {
     hole_number: holeNum,
     par: 4,
-    length_yards: 350,
+    length_yards: null,
     handicap_stroke: holeNum,
     shots: []
   };
   currentShotNum = 1;
   manualDistance = null;
   selectedClub = null;
+  isOnGreen = false;
+  puttCount = 1;
   
   updateDisplay();
   clearClubSelection();
+  showNormalMode();
 }
 
 function clearClubSelection() {
@@ -127,11 +133,100 @@ function clearClubSelection() {
   });
 }
 
+// Show normal shot entry mode
+function showNormalMode() {
+  document.getElementById('distance-section')?.classList.remove('hidden');
+  document.getElementById('club-section')?.classList.remove('hidden');
+  document.getElementById('result-section')?.classList.remove('hidden');
+  document.getElementById('putt-section')?.classList.add('hidden');
+  document.getElementById('putt-action-section')?.classList.add('hidden');
+  
+  const distLabel = document.getElementById('distance-label');
+  if (distLabel) distLabel.textContent = 'Distance to Hole';
+}
+
+// Show putt mode (when on green)
+function showPuttMode() {
+  isOnGreen = true;
+  puttCount = 1;
+  
+  // Auto-select putter
+  selectClub('Putter');
+  
+  // Hide normal controls, show putt controls
+  document.getElementById('distance-section')?.classList.add('hidden');
+  document.getElementById('club-section')?.classList.add('hidden');
+  document.getElementById('result-section')?.classList.add('hidden');
+  document.getElementById('putt-section')?.classList.remove('hidden');
+  document.getElementById('putt-action-section')?.classList.remove('hidden');
+  
+  // Update putt display
+  updatePuttDisplay();
+}
+
+function updatePuttDisplay() {
+  const puttCountEl = document.getElementById('putt-count');
+  if (puttCountEl) puttCountEl.textContent = puttCount;
+  
+  // Update label based on current score vs par
+  const shotsTaken = currentHole.shots.length;
+  const par = currentHole.par;
+  const scoreName = getScoreName(shotsTaken + 1, par); // +1 because we're putting
+  
+  const label = document.querySelector('#putt-section .text-emerald-400');
+  if (label) label.textContent = `Putting for ${scoreName}`;
+}
+
+function getScoreName(shots, par) {
+  const diff = shots - par;
+  const names = {
+    '-3': 'Albatross',
+    '-2': 'Eagle',
+    '-1': 'Birdie',
+    '0': 'Par',
+    '1': 'Bogey',
+    '2': 'Double Bogey',
+    '3': 'Triple Bogey'
+  };
+  return names[diff] || `${diff > 0 ? '+' : ''}${diff}`;
+}
+
+function adjustPutts(delta) {
+  puttCount = Math.max(1, puttCount + delta);
+  updatePuttDisplay();
+}
+
+async function recordPutts() {
+  // Record each putt as a shot
+  for (let i = 0; i < puttCount; i++) {
+    const isLastPutt = i === puttCount - 1;
+    const shot = {
+      shot_number: currentShotNum + i,
+      shot_id: generateId(),
+      club: 'Putter',
+      distance_to_hole_before: i === 0 ? manualDistance : null,
+      distance_to_hole_after: null,
+      shot_result: { 
+        category: isLastPutt ? 'hole' : 'green', 
+        lie_quality: null, 
+        miss_direction: null 
+      },
+      gps: { lat: null, lng: null },
+      timestamp: new Date().toISOString()
+    };
+    
+    await saveShot(shot, isLastPutt ? 'hole' : 'green', false); // Don't finish hole yet
+  }
+  
+  // Now finish the hole
+  await finishHole();
+}
+
 // Update display
 function updateDisplay() {
   document.getElementById('current-hole').textContent = currentHole.hole_number;
   document.getElementById('current-par').textContent = currentHole.par;
-  document.getElementById('current-length').textContent = currentHole.length_yards;
+  document.getElementById('current-length').textContent = currentHole.length_yards || '—';
   document.getElementById('current-shot').textContent = currentShotNum;
   document.getElementById('distance-display').textContent = manualDistance || '—';
   
@@ -157,6 +252,35 @@ function editDistance() {
 
 // Record shot
 async function recordResult(result) {
+  // If landing on green, switch to putt mode after recording
+  if (result === 'green') {
+    if (!selectedClub) {
+      shakeElement(document.getElementById('club-grid'));
+      return;
+    }
+    
+    const shot = {
+      shot_number: currentShotNum,
+      shot_id: generateId(),
+      club: selectedClub,
+      distance_to_hole_before: manualDistance,
+      distance_to_hole_after: null,
+      shot_result: { category: result, lie_quality: null, miss_direction: null },
+      gps: { lat: null, lng: null },
+      timestamp: new Date().toISOString()
+    };
+    
+    captureGps(shot);
+    await saveShot(shot, result, false);
+    
+    // Switch to putt mode
+    currentShotNum++;
+    manualDistance = null;
+    showPuttMode();
+    return;
+  }
+  
+  // Normal shot
   if (!selectedClub) {
     shakeElement(document.getElementById('club-grid'));
     return;
@@ -173,11 +297,8 @@ async function recordResult(result) {
     timestamp: new Date().toISOString()
   };
   
-  // Capture GPS async (don't block)
   captureGps(shot);
-  
-  // Save shot
-  await saveShot(shot, result);
+  await saveShot(shot, result, true);
 }
 
 function captureGps(shot) {
@@ -193,19 +314,18 @@ function captureGps(shot) {
   }
 }
 
-async function saveShot(shot, resultCategory) {
+async function saveShot(shot, resultCategory, shouldFinishHole = true) {
   currentHole.shots.push(shot);
   
   // Update previous shot's after distance
-  if (currentShotNum > 1) {
-    const prev = currentHole.shots[currentShotNum - 2];
+  if (currentShotNum > 1 && currentHole.shots.length > 1) {
+    const prev = currentHole.shots[currentHole.shots.length - 2];
     if (prev) prev.distance_to_hole_after = manualDistance;
   }
   
   // Sync to backend if online
   if (isOnline && currentRound.round_id && !currentRound._offline) {
     try {
-      // Ensure hole exists on backend
       const existingHole = currentRound.holes?.find(h => h.hole_number === currentHole.hole_number);
       if (!existingHole) {
         await DimpleAPI.RoundAPI.addHole(currentRound.round_id, {
@@ -215,7 +335,6 @@ async function saveShot(shot, resultCategory) {
         });
       }
       
-      // Add shot to backend
       await DimpleAPI.RoundAPI.addShot(currentRound.round_id, currentHole.hole_number, {
         shot_number: shot.shot_number,
         club: shot.club,
@@ -226,14 +345,13 @@ async function saveShot(shot, resultCategory) {
       });
     } catch (err) {
       console.error('Failed to sync shot:', err);
-      // Queue for later sync
       pendingSync.push({ type: 'shot', roundId: currentRound.round_id, data: shot });
     }
   }
   
-  if (resultCategory === 'hole') {
-    finishHole();
-  } else {
+  if (shouldFinishHole && resultCategory === 'hole') {
+    await finishHole();
+  } else if (shouldFinishHole) {
     nextShot();
   }
 }
@@ -247,13 +365,94 @@ function nextShot() {
 }
 
 async function finishHole() {
+  // Show hole info screen instead of auto-advancing
+  tempHoleInfo = {
+    hole_number: currentHole.hole_number,
+    par: currentHole.par,
+    length_yards: currentHole.length_yards,
+    handicap_stroke: currentHole.handicap_stroke,
+    shots_taken: currentHole.shots.length
+  };
+  
+  document.getElementById('hole-info-num').textContent = tempHoleInfo.hole_number;
+  document.getElementById('hole-info-shots').textContent = tempHoleInfo.shots_taken;
+  document.getElementById('hole-info-length').textContent = tempHoleInfo.length_yards || '—';
+  
+  // Set defaults
+  setHolePar(tempHoleInfo.par);
+  setHoleHandicap(tempHoleInfo.handicap_stroke);
+  
+  showScreen('screen-hole-info');
+}
+
+// Hole info screen functions
+function setHolePar(par) {
+  if (tempHoleInfo) tempHoleInfo.par = par;
+  document.querySelectorAll('.hole-par-btn').forEach(btn => {
+    const isSelected = parseInt(btn.dataset.par) === par;
+    btn.classList.toggle('bg-emerald-500', isSelected);
+    btn.classList.toggle('text-slate-950', isSelected);
+    btn.classList.toggle('bg-slate-800', !isSelected);
+  });
+}
+
+function setHoleHandicap(hcp) {
+  if (tempHoleInfo) tempHoleInfo.handicap_stroke = hcp;
+  document.querySelectorAll('.hole-hcp-btn').forEach(btn => {
+    const isSelected = parseInt(btn.dataset.hcp) === hcp;
+    btn.classList.toggle('bg-emerald-500', isSelected);
+    btn.classList.toggle('text-slate-950', isSelected);
+    btn.classList.toggle('bg-slate-800', !isSelected);
+  });
+}
+
+function editHoleLength() {
+  const current = tempHoleInfo?.length_yards || '';
+  const input = prompt('Hole length (yards):', current);
+  if (input !== null && input.trim() !== '') {
+    const yards = parseInt(input);
+    if (!isNaN(yards) && yards > 0 && yards <= 800) {
+      if (tempHoleInfo) tempHoleInfo.length_yards = yards;
+      document.getElementById('hole-info-length').textContent = yards;
+    }
+  }
+}
+
+async function saveHoleInfo() {
+  // Update current hole with edited info
+  currentHole.par = tempHoleInfo.par;
+  currentHole.length_yards = tempHoleInfo.length_yards;
+  currentHole.handicap_stroke = tempHoleInfo.handicap_stroke;
+  
+  // Add to round
   currentRound.holes.push(currentHole);
+  
+  // Update hole on backend if online
+  if (isOnline && currentRound.round_id && !currentRound._offline) {
+    try {
+      await DimpleAPI.RoundAPI.update(currentRound.round_id, {
+        course: currentRound.course,
+        player: currentRound.player
+      });
+    } catch (err) {
+      console.error('Failed to update hole info:', err);
+    }
+  }
   
   if (currentHole.hole_number < 18) {
     startHole(currentHole.hole_number + 1);
+    showScreen('screen-shot-entry');
   } else {
     await finishRound();
   }
+}
+
+async function finishRoundFromHoleInfo() {
+  currentHole.par = tempHoleInfo.par;
+  currentHole.length_yards = tempHoleInfo.length_yards;
+  currentHole.handicap_stroke = tempHoleInfo.handicap_stroke;
+  currentRound.holes.push(currentHole);
+  await finishRound();
 }
 
 async function finishRound() {
@@ -266,7 +465,6 @@ async function finishRound() {
       console.error('Failed to finish round on backend:', err);
     }
   } else {
-    // Save locally
     saveRoundLocal(currentRound);
   }
   
@@ -277,6 +475,46 @@ async function finishRound() {
   });
 }
 
+// Menu
+function toggleMenu() {
+  const menu = document.getElementById('menu-overlay');
+  menu.classList.toggle('hidden');
+}
+
+async function saveAndExit() {
+  toggleMenu();
+  
+  if (currentHole && currentHole.shots.length > 0) {
+    currentRound.holes.push(currentHole);
+  }
+  
+  currentRound.end_time = new Date().toISOString();
+  
+  if (isOnline && currentRound.round_id && !currentRound._offline) {
+    try {
+      await DimpleAPI.RoundAPI.finish(currentRound.round_id);
+    } catch (err) {
+      console.error('Failed to save round:', err);
+      saveRoundLocal(currentRound);
+    }
+  } else {
+    saveRoundLocal(currentRound);
+  }
+  
+  showScreen('screen-home');
+  loadRounds();
+}
+
+function confirmAbandonRound() {
+  toggleMenu();
+  showModal('Abandon Round?', 'All progress will be lost.', () => {
+    currentRound = null;
+    currentHole = null;
+    closeModal();
+    showScreen('screen-home');
+  });
+}
+
 // Undo
 function undoLastShot() {
   if (currentHole.shots.length === 0) return;
@@ -284,7 +522,6 @@ function undoLastShot() {
   currentHole.shots.pop();
   currentShotNum = Math.max(1, currentShotNum - 1);
   
-  // Restore distance from previous shot if available
   const lastShot = currentHole.shots[currentHole.shots.length - 1];
   manualDistance = lastShot ? lastShot.distance_to_hole_after : null;
   
@@ -293,29 +530,11 @@ function undoLastShot() {
   clearClubSelection();
 }
 
-// End round with confirmation
+// End round with confirmation (legacy - now in menu)
 function confirmEndRound() {
   showModal('End Round?', 'Your progress will be saved.', async () => {
-    currentRound.end_time = new Date().toISOString();
-    
-    if (currentHole.shots.length > 0) {
-      currentRound.holes.push(currentHole);
-    }
-    
-    if (isOnline && currentRound.round_id && !currentRound._offline) {
-      try {
-        await DimpleAPI.RoundAPI.finish(currentRound.round_id);
-      } catch (err) {
-        console.error('Failed to finish round:', err);
-        saveRoundLocal(currentRound);
-      }
-    } else {
-      saveRoundLocal(currentRound);
-    }
-    
+    await saveAndExit();
     closeModal();
-    showScreen('screen-home');
-    loadRounds();
   });
 }
 
@@ -345,7 +564,7 @@ function shakeElement(el) {
   setTimeout(() => el.style.transform = 'translateX(0)', 200);
 }
 
-// LocalStorage fallback (for offline mode)
+// LocalStorage fallback
 function saveRoundLocal(round) {
   const rounds = getRoundsLocal();
   rounds.push(round);
@@ -360,7 +579,7 @@ function getRoundsLocal() {
   }
 }
 
-// Load rounds — prefer backend, fallback to localStorage
+// Load rounds
 async function loadRounds() {
   const list = document.getElementById('rounds-list');
   
@@ -374,7 +593,6 @@ async function loadRounds() {
     }
   }
   
-  // Fallback to localStorage
   const rounds = getRoundsLocal();
   renderRoundsListLocal(rounds);
 }

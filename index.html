@@ -79,7 +79,7 @@
     <!-- SHOT ENTRY SCREEN -->
     <div class="screen flex-col h-full" id="screen-shot-entry">
       
-      <!-- Top Bar: Hole Info -->
+      <!-- Top Bar: Hole Info + Menu -->
       <div class="px-4 pt-3 pb-2">
         <div class="bg-slate-800/80 backdrop-blur rounded-2xl p-3 flex items-center justify-between">
           <div class="flex items-center gap-3">
@@ -88,30 +88,51 @@
             </div>
             <div>
               <div class="text-xs text-slate-400 uppercase tracking-wider">Hole</div>
-              <div class="text-sm font-medium">Par <span id="current-par">4</span> • <span id="current-length">350</span>y</div>
+              <div class="text-sm font-medium">Par <span id="current-par">4</span> • <span id="current-length">—</span>y</div>
             </div>
           </div>
-          <div class="text-right">
-            <div class="text-xs text-slate-400 uppercase tracking-wider">Shot</div>
-            <div class="text-2xl font-bold text-emerald-400" id="current-shot">1</div>
+          <div class="flex items-center gap-3">
+            <div class="text-right">
+              <div class="text-xs text-slate-400 uppercase tracking-wider">Shot</div>
+              <div class="text-2xl font-bold text-emerald-400" id="current-shot">1</div>
+            </div>
+            <!-- Hamburger Menu -->
+            <button onclick="toggleMenu()" class="btn-press ml-2 p-2 rounded-xl hover:bg-slate-700 transition-colors">
+              <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
       
       <!-- Distance Display -->
-      <div class="px-4 py-2">
+      <div class="px-4 py-2" id="distance-section">
         <button onclick="editDistance()" class="btn-press w-full bg-slate-800/50 border-2 border-dashed border-slate-700 hover:border-emerald-500/50 rounded-2xl p-4 transition-colors">
-          <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Distance to Hole</div>
+          <div class="text-xs text-slate-400 uppercase tracking-wider mb-1" id="distance-label">Distance to Hole</div>
           <div class="flex items-baseline justify-center gap-1">
             <span class="text-5xl font-bold" id="distance-display">—</span>
-            <span class="text-lg text-slate-500">yds</span>
+            <span class="text-lg text-slate-500" id="distance-unit">yds</span>
           </div>
-          <div class="text-xs text-slate-500 mt-1">tap to edit</div>
+          <div class="text-xs text-slate-500 mt-1" id="distance-hint">tap to edit</div>
         </button>
       </div>
       
+      <!-- Putt Mode Display (hidden by default) -->
+      <div class="px-4 py-2 hidden" id="putt-section">
+        <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4">
+          <div class="text-xs text-emerald-400 uppercase tracking-wider mb-2 text-center">Putting for Birdie</div>
+          <div class="flex items-center justify-center gap-4">
+            <button onclick="adjustPutts(-1)" class="btn-press w-12 h-12 bg-slate-700 rounded-xl text-xl font-bold text-white">−</button>
+            <div class="text-4xl font-bold text-emerald-400" id="putt-count">1</div>
+            <button onclick="adjustPutts(1)" class="btn-press w-12 h-12 bg-slate-700 rounded-xl text-xl font-bold text-white">+</button>
+          </div>
+          <div class="text-xs text-slate-500 text-center mt-2">putts</div>
+        </div>
+      </div>
+      
       <!-- Club Selection -->
-      <div class="px-4 py-2 flex-1 flex flex-col min-h-0">
+      <div class="px-4 py-2 flex-1 flex flex-col min-h-0" id="club-section">
         <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Select Club</div>
         <div class="flex-1 overflow-y-auto no-scrollbar">
           <div class="grid grid-cols-4 gap-2" id="club-grid">
@@ -121,7 +142,7 @@
       </div>
       
       <!-- Result Selection -->
-      <div class="px-4 py-2">
+      <div class="px-4 py-2" id="result-section">
         <div class="text-xs text-slate-400 uppercase tracking-wider mb-2">Result</div>
         <div class="grid grid-cols-3 gap-2" id="result-grid">
           <button onclick="recordResult('fairway')" class="btn-press bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 py-3 rounded-xl text-sm font-medium text-emerald-300 transition-colors">
@@ -145,13 +166,105 @@
         </div>
       </div>
       
+      <!-- Putt Action Button (hidden by default) -->
+      <div class="px-4 py-2 hidden" id="putt-action-section">
+        <button onclick="recordPutts()" class="btn-press w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 rounded-2xl text-lg transition-colors">
+          Record Putts
+        </button>
+      </div>
+      
       <!-- Bottom Actions -->
       <div class="px-4 pb-4 pt-2 flex items-center justify-between">
         <button onclick="undoLastShot()" class="btn-press text-slate-500 hover:text-slate-300 text-sm font-medium px-3 py-2 rounded-lg transition-colors" id="undo-btn" style="opacity: 0.3; pointer-events: none;">
           ↩ Undo
         </button>
-        <button onclick="confirmEndRound()" class="btn-press text-slate-600 hover:text-red-400 text-xs font-medium px-3 py-2 rounded-lg transition-colors">
-          End Round
+        <div class="text-xs text-slate-600" id="hole-status"></div>
+      </div>
+    </div>
+    
+    <!-- HOLE INFO SCREEN -->
+    <div class="screen flex-col h-full" id="screen-hole-info">
+      <div class="flex-1 flex flex-col px-6 pt-8">
+        <div class="text-center mb-8">
+          <div class="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-bold">Hole Complete!</h2>
+          <p class="text-slate-400 text-sm mt-1">Hole <span id="hole-info-num">1</span> • <span id="hole-info-shots">0</span> shots</p>
+        </div>
+        
+        <div class="space-y-4">
+          <div>
+            <label class="text-xs text-slate-400 uppercase tracking-wider mb-2 block">Par</label>
+            <div class="grid grid-cols-5 gap-2">
+              <button onclick="setHolePar(3)" class="btn-press hole-par-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-lg font-bold transition-colors" data-par="3">3</button>
+              <button onclick="setHolePar(4)" class="btn-press hole-par-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-lg font-bold transition-colors" data-par="4">4</button>
+              <button onclick="setHolePar(5)" class="btn-press hole-par-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-lg font-bold transition-colors" data-par="5">5</button>
+              <button onclick="setHolePar(6)" class="btn-press hole-par-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-lg font-bold transition-colors" data-par="6">6</button>
+              <button onclick="setHolePar(7)" class="btn-press hole-par-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-lg font-bold transition-colors" data-par="7">7</button>
+            </div>
+          </div>
+          
+          <div>
+            <label class="text-xs text-slate-400 uppercase tracking-wider mb-2 block">Hole Length (yards)</label>
+            <button onclick="editHoleLength()" class="btn-press w-full bg-slate-800/50 border-2 border-dashed border-slate-700 hover:border-emerald-500/50 rounded-2xl p-4 transition-colors">
+              <div class="flex items-baseline justify-center gap-1">
+                <span class="text-4xl font-bold" id="hole-info-length">—</span>
+                <span class="text-lg text-slate-500">yds</span>
+              </div>
+            </button>
+          </div>
+          
+          <div>
+            <label class="text-xs text-slate-400 uppercase tracking-wider mb-2 block">Handicap Stroke</label>
+            <div class="grid grid-cols-9 gap-2">
+              <button onclick="setHoleHandicap(1)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="1">1</button>
+              <button onclick="setHoleHandicap(2)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="2">2</button>
+              <button onclick="setHoleHandicap(3)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="3">3</button>
+              <button onclick="setHoleHandicap(4)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="4">4</button>
+              <button onclick="setHoleHandicap(5)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="5">5</button>
+              <button onclick="setHoleHandicap(6)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="6">6</button>
+              <button onclick="setHoleHandicap(7)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="7">7</button>
+              <button onclick="setHoleHandicap(8)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="8">8</button>
+              <button onclick="setHoleHandicap(9)" class="btn-press hole-hcp-btn bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-sm font-bold transition-colors" data-hcp="9">9</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="px-6 pb-8 pt-4 space-y-3">
+        <button onclick="saveHoleInfo()" class="btn-press w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 rounded-2xl text-lg transition-colors">
+          Next Hole
+        </button>
+        <button onclick="finishRoundFromHoleInfo()" class="btn-press w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-2xl text-sm font-medium transition-colors">
+          Finish Round
+        </button>
+      </div>
+    </div>
+    
+    <!-- MENU OVERLAY -->
+    <div id="menu-overlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden" onclick="toggleMenu()">
+      <div class="absolute top-16 right-4 bg-slate-800 rounded-2xl p-2 w-56 shadow-xl" onclick="event.stopPropagation()">
+        <button onclick="saveAndExit()" class="btn-press w-full text-left px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-700 transition-colors flex items-center gap-3">
+          <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+          </svg>
+          Save & Exit
+        </button>
+        <button onclick="showScreen('screen-history'); toggleMenu();" class="btn-press w-full text-left px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-700 transition-colors flex items-center gap-3">
+          <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Round History
+        </button>
+        <div class="border-t border-slate-700 my-1"></div>
+        <button onclick="confirmAbandonRound()" class="btn-press w-full text-left px-4 py-3 rounded-xl text-sm font-medium hover:bg-red-500/20 text-red-400 transition-colors flex items-center gap-3">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+          Abandon Round
         </button>
       </div>
     </div>
