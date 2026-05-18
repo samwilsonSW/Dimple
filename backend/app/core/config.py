@@ -5,7 +5,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
-    openai_api_key: str
+    moonshot_api_key: str
     environment: str = "development"
 
     class Config:
