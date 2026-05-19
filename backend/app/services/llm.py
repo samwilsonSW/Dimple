@@ -7,7 +7,7 @@ settings = get_settings()
 # Configure Moonshot client (OpenAI-compatible API)
 moonshot_client = openai.OpenAI(
     api_key=settings.moonshot_api_key,
-    base_url="https://api.moonshot.cn/v1",
+    base_url="https://api.moonshot.ai/v1",
 )
 
 
