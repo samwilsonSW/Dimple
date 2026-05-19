@@ -19,7 +19,7 @@ def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.7,
+        temperature=1,
         max_tokens=500,
     )
     return response.choices[0].message.content
