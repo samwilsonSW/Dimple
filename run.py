@@ -1,29 +1,33 @@
 """
-Entry point for running the Dimple API from the project root.
+Entry point for running the Dimple API.
 
 Usage:
     python run.py
 
-This script ensures the backend package is discoverable regardless of
-where you run it from.
+Works from any directory — auto-discovers the project root.
 """
 import sys
 import os
 from pathlib import Path
 
-# Add the current directory to Python path
+# Get the directory containing this script (project root)
 project_root = Path(__file__).parent.resolve()
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+backend_dir = project_root / "backend"
+
+# Add both project root and backend to Python path
+# This makes both 'backend.app' and 'app' imports work
+for path in [str(backend_dir), str(project_root)]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 # Now import and run
 import uvicorn
 
 if __name__ == "__main__":
     uvicorn.run(
-        "backend.app.main:app",
+        "app.main:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
-        reload_dirs=[str(project_root / "backend")],
+        reload_dirs=[str(backend_dir)],
     )
