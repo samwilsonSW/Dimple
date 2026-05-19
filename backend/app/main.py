@@ -3,10 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any
 
 from app.core.config import get_settings
-from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel
+from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel, DrillRecommendation
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
-from app.services.llm import generate_coach_response
+from app.services.llm import generate_coach_response, generate_structured_coach_response
 
 settings = get_settings()
 
@@ -149,13 +149,27 @@ def coach_ask(query: CoachQuery):
         f"Based strictly on the shot history above, provide a helpful coaching response."
     )
 
-    # 4) Call Moonshot LLM
+    # 4) Call Moonshot LLM (structured JSON)
     try:
-        answer = generate_coach_response(system_prompt, user_prompt)
+        structured = generate_structured_coach_response(system_prompt, user_prompt)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"LLM generation failed: {str(e)}")
 
+    # Build drill objects from parsed JSON
+    drills = []
+    for d in structured.get("drill_recommendations", []):
+        drills.append(DrillRecommendation(
+            priority=d.get("priority", 1),
+            focus_area=d.get("focus_area", ""),
+            drill_name=d.get("drill_name", ""),
+            instructions=d.get("instructions", ""),
+            expected_outcome=d.get("expected_outcome", ""),
+        ))
+
     return CoachResponse(
-        answer=answer,
+        answer=structured.get("answer", ""),
+        confidence=structured.get("confidence", 3),
+        key_insights=structured.get("key_insights", []),
+        drill_recommendations=drills,
         context=similar_shots,
     )

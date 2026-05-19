@@ -53,3 +53,55 @@ def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
         max_tokens=8000, # Increased to allow for reasoning overhead
     )
     return response.choices[0].message.content
+
+
+def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> dict:
+    """Call Moonshot kimi-k2.5 to generate a structured JSON coaching response."""
+    structured_system_prompt = (
+        system_prompt + "\n\n"
+        "You MUST respond with valid JSON only. No markdown, no prose outside the JSON. "
+        "Use this exact structure:\n"
+        "{\n"
+        '  "answer": "string — full natural-language coaching response",\n'
+        '  "confidence": number — integer 1-5,\n'
+        '  "key_insights": ["string", "string", ...],\n'
+        '  "drill_recommendations": [\n'
+        '    {\n'
+        '      "priority": number — integer 1+,\n'
+        '      "focus_area": "string — e.g. 6-iron push, lag putting",\n'
+        '      "drill_name": "string",\n'
+        '      "instructions": "string — step-by-step",\n'
+        '      "expected_outcome": "string — what success looks like"\n'
+        '    }\n'
+        '  ]\n'
+        "}"
+    )
+
+    response = moonshot_client.chat.completions.create(
+        model="kimi-k2.5",
+        messages=[
+            {"role": "system", "content": structured_system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=1.0,
+        max_tokens=8000,
+    )
+
+    import json
+    raw = response.choices[0].message.content.strip()
+
+    # Moonshot sometimes wraps JSON in markdown code blocks — strip them
+    if raw.startswith("```json"):
+        raw = raw[7:]
+    if raw.startswith("```"):
+        raw = raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3]
+    raw = raw.strip()
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM returned invalid JSON: {e}\nRaw response:\n{raw}")
+
+    return parsed

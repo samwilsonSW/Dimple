@@ -112,9 +112,41 @@ def cmd_ask(user_id, question):
         )
         if r.status_code == 200:
             result = r.json()
+
+            # ── Main Answer ──
             print(f"\n🏌️ Coach says:\n{'─' * 50}")
             print(result.get("answer", "No response"))
             print(f"{'─' * 50}")
+
+            # ── Confidence ──
+            confidence = result.get("confidence", 3)
+            conf_emoji = "🔥" if confidence >= 4 else "⚡" if confidence == 3 else "🤔"
+            print(f"\n{conf_emoji} Confidence: {confidence}/5")
+
+            # ── Key Insights ──
+            insights = result.get("key_insights", [])
+            if insights:
+                print(f"\n💡 Key Insights:")
+                for insight in insights:
+                    print(f"   • {insight}")
+
+            # ── Drill Recommendations ──
+            drills = result.get("drill_recommendations", [])
+            if drills:
+                print(f"\n🎯 Recommended Drills:")
+                for d in drills:
+                    priority = d.get("priority", 1)
+                    focus = d.get("focus_area", "")
+                    name = d.get("drill_name", "")
+                    instructions = d.get("instructions", "")
+                    outcome = d.get("expected_outcome", "")
+                    print(f"\n   #{priority} — {focus}")
+                    print(f"   Drill: {name}")
+                    print(f"   How: {instructions}")
+                    if outcome:
+                        print(f"   Goal: {outcome}")
+
+            # ── Context (retrieved shots) ──
             context = result.get("context", [])
             if context:
                 print(f"\n📊 Based on {len(context)} retrieved shots:")
