@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────
+# Dimple — .gitignore
+# Branch: feature/rag-ingestion-coach
+# ─────────────────────────────────────────────
+
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ─── Virtual Environments ───
+venv/
+ENV/
+env/
+.venv/
+env.bak/
+venv.bak/
+
+# ─── Environment / Secrets ───
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+!.env.example
+
+# ─── IDE / Editor ───
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# ─── Logs / Databases ───
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# ─── Testing / Coverage ───
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ─── Jupyter / IPython ───
+.ipynb_checkpoints
+*.ipynb
+
+# ─── Node / Frontend (if added later) ───
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ─── Build / Deploy ───
+*.pem
+*.key
+*.crt
+
+# ─── OS ───
+Thumbs.db
