@@ -6,11 +6,14 @@ Usage:
     python test_cli.py
 
 Commands:
-    ingest <file>          Ingest a round JSON file
-    ask <user_id> <question>   Ask the coach a question
-    health                 Check API health
-    list                   List available test round files
-    quit / exit            Exit the CLI
+    /ingest <file>          Ingest a round JSON file
+    /user <user_id>         Set active player context
+    /health                 Check API health
+    /list                   List available test round files
+    /help                   Show help
+    /quit, /exit, /q        Exit the CLI
+
+    Anything else           Ask the coach (uses active /user context)
 """
 import sys
 import json
@@ -20,32 +23,38 @@ from pathlib import Path
 API_BASE = "http://localhost:8000"
 DATA_DIR = Path(__file__).parent / "data" / "rounds"
 
+# ── Session State ──
+_current_user: str | None = None
+
 
 def print_banner():
     print("""
 ╔══════════════════════════════════════════╗
-║       Dimple API Test CLI v0.1           ║
+║       Dimple API Test CLI v0.2           ║
 ║  Ingest rounds · Ask the AI Coach        ║
 ╚══════════════════════════════════════════╝
 """)
-    print("Type 'help' for commands, 'quit' to exit.\n")
+    print("Type '/help' for commands, '/quit' to exit.")
+    print("Just type your question to ask the coach.\n")
 
 
 def cmd_help():
     print("""
-Commands:
-  ingest <file>              Ingest a round JSON file
-  ask <user_id> <question>   Ask the coach (use quotes for questions)
-  health                     Check if API is running
-  list                       Show available test round files
-  clear                      Clear the screen
-  help                       Show this help
-  quit / exit                Exit
+Commands (prefix with /):
+  /ingest <file>       Ingest a round JSON file
+  /user <user_id>      Set active player context
+  /health              Check if API is running
+  /list                Show available test round files
+  /clear               Clear the screen
+  /help                Show this help
+  /quit /exit /q       Exit
 
 Examples:
-  ingest round_13hcp.json
-  ask player_29hcp "Why am I so bad at golf?"
-  ask player_3hcp "How do I hit more fairways?"
+  /user player_29hcp
+  How do I stop pushing my 6 iron?
+  /ingest round_13hcp.json
+  /user player_3hcp
+  What should I work on to go pro?
 """)
 
 
@@ -56,6 +65,12 @@ def cmd_health():
     except Exception as e:
         print(f"❌ API unreachable: {e}")
         print("   Make sure the server is running: python run.py")
+
+
+def cmd_user(user_id: str):
+    global _current_user
+    _current_user = user_id
+    print(f"👤 Active player set to: {user_id}")
 
 
 def cmd_list():
@@ -72,8 +87,7 @@ def cmd_list():
         print(f"  • {f.name:<20} ({size:,} bytes)")
 
 
-def cmd_ingest(filename):
-    # Resolve file path
+def cmd_ingest(filename: str):
     filepath = Path(filename)
     if not filepath.exists():
         filepath = DATA_DIR / filename
@@ -102,12 +116,17 @@ def cmd_ingest(filename):
         print(f"❌ Failed: {e}")
 
 
-def cmd_ask(user_id, question):
+def cmd_ask(question: str):
+    global _current_user
+    if not _current_user:
+        print("❌ No active player set. Use: /user <player_id>")
+        return
+
     print(f"🤔 Asking coach about: {question}")
     try:
         r = requests.post(
             f"{API_BASE}/api/v1/coach/ask",
-            json={"user_id": user_id, "question": question},
+            json={"user_id": _current_user, "question": question},
             timeout=60
         )
         if r.status_code == 200:
@@ -173,47 +192,48 @@ def main():
         if not line:
             continue
 
-        parts = line.split()
-        cmd = parts[0].lower()
-
-        if cmd in ("quit", "exit", "q"):
-            print("👋 Goodbye!")
-            break
-
-        elif cmd == "help":
-            cmd_help()
-
-        elif cmd == "health":
-            cmd_health()
-
-        elif cmd == "list":
-            cmd_list()
-
-        elif cmd == "clear":
-            print("\n" * 50)
-
-        elif cmd == "ingest":
-            if len(parts) < 2:
-                print("Usage: ingest <filename>")
+        # ── Slash commands ──
+        if line.startswith("/"):
+            parts = line[1:].split()
+            if not parts:
                 continue
-            cmd_ingest(parts[1])
+            cmd = parts[0].lower()
 
-        elif cmd == "ask":
-            if len(parts) < 3:
-                print("Usage: ask <user_id> \"<question>\"")
-                continue
-            user_id = parts[1]
-            # Join remaining parts as question (handles spaces)
-            question_start = line.find(user_id) + len(user_id)
-            question = line[question_start:].strip().strip('"\'')
-            if not question:
-                print("Usage: ask <user_id> \"<question>\"")
-                continue
-            cmd_ask(user_id, question)
+            if cmd in ("quit", "exit", "q"):
+                print("👋 Goodbye!")
+                break
 
+            elif cmd == "help":
+                cmd_help()
+
+            elif cmd == "health":
+                cmd_health()
+
+            elif cmd == "user":
+                if len(parts) < 2:
+                    print("Usage: /user <player_id>")
+                    continue
+                cmd_user(parts[1])
+
+            elif cmd == "list":
+                cmd_list()
+
+            elif cmd == "clear":
+                print("\n" * 50)
+
+            elif cmd == "ingest":
+                if len(parts) < 2:
+                    print("Usage: /ingest <filename>")
+                    continue
+                cmd_ingest(parts[1])
+
+            else:
+                print(f"Unknown command: /{cmd}")
+                print("Type '/help' for available commands.")
+
+        # ── Plain text = ask the coach ──
         else:
-            print(f"Unknown command: {cmd}")
-            print("Type 'help' for available commands.")
+            cmd_ask(line)
 
         print()
 
