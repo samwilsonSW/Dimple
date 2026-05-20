@@ -25,15 +25,29 @@ def _archive_old_logs():
         shutil.move(str(old), str(ARCHIVE_DIR / old.name))
 
 
-def _log_response(raw_response: str, parsed: dict | None = None):
-    """Save raw Moonshot response to disk with rotation."""
+def _log_response(raw_response: str, parsed: dict | None = None, usage: dict | None = None, model: str = "unknown"):
+    """Save raw Moonshot response to disk with rotation, including token cost."""
     _archive_old_logs()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filepath = LLM_LOG_DIR / f"llm_response_{timestamp}.txt"
 
-    lines = [f"Timestamp: {datetime.now().isoformat()}", "=" * 50, "RAW RESPONSE:", raw_response]
+    lines = [
+        f"Timestamp: {datetime.now().isoformat()}",
+        f"Model: {model}",
+        "=" * 50,
+        "RAW RESPONSE:",
+        raw_response,
+    ]
     if parsed:
         lines += ["", "PARSED JSON:", json.dumps(parsed, indent=2)]
+    if usage:
+        lines += [
+            "",
+            "USAGE / COST:",
+            f"  prompt_tokens:     {usage.get('prompt_tokens', 'N/A')}",
+            f"  completion_tokens: {usage.get('completion_tokens', 'N/A')}",
+            f"  total_tokens:      {usage.get('total_tokens', 'N/A')}",
+        ]
 
     filepath.write_text("\n".join(lines), encoding="utf-8")
     return filepath
@@ -84,9 +98,13 @@ def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
             {"role": "user", "content": user_prompt},
         ],
         temperature=1.0,
-        max_tokens=8000, # Increased to allow for reasoning overhead
+        max_tokens=8000,
     )
-    return response.choices[0].message.content
+    raw = response.choices[0].message.content
+    usage = response.usage.model_dump() if response.usage else None
+    model_used = response.model if response.model else "kimi-k2.5"
+    _log_response(raw, usage=usage, model=model_used)
+    return raw
 
 
 def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> dict:
@@ -122,6 +140,8 @@ def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> 
     )
 
     raw = response.choices[0].message.content.strip()
+    usage = response.usage.model_dump() if response.usage else None
+    model_used = response.model if response.model else "kimi-k2.5"
 
     # Moonshot sometimes wraps JSON in markdown code blocks — strip them
     if raw.startswith("```json"):
@@ -135,8 +155,8 @@ def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> 
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as e:
-        _log_response(raw, parsed=None)
+        _log_response(raw, parsed=None, usage=usage, model=model_used)
         raise ValueError(f"LLM returned invalid JSON: {e}\nRaw response:\n{raw}")
 
-    _log_response(raw, parsed=parsed)
+    _log_response(raw, parsed=parsed, usage=usage, model=model_used)
     return parsed
