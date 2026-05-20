@@ -8,9 +8,12 @@ _model = None
 
 
 def get_model() -> SentenceTransformer:
-    """Lazy-load the embedding model."""
+    """Lazy-load the embedding model with extended timeout."""
     global _model
     if _model is None:
+        # Increase HF download timeout (default is 10s, bump to 120s)
+        import os
+        os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "120")
         _model = SentenceTransformer("all-MiniLM-L6-v2")
     return _model
 

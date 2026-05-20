@@ -20,6 +20,17 @@ for path in [str(backend_dir), str(project_root)]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
+# Pre-download embedding model if not cached (one-time)
+print("Checking embedding model cache...")
+try:
+    os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "120")
+    from sentence_transformers import SentenceTransformer
+    SentenceTransformer("all-MiniLM-L6-v2")
+    print("✅ Embedding model ready.")
+except Exception as e:
+    print(f"⚠️ Model download failed: {e}")
+    print("   The server will retry on first embed call.")
+
 # Now import and run
 import uvicorn
 
