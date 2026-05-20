@@ -1,8 +1,42 @@
 """Moonshot LLM client for coach generation."""
 import openai
+import json
+import os
+import shutil
+from datetime import datetime
+from pathlib import Path
 from app.core.config import get_settings
 
 settings = get_settings()
+
+# ── Response logging ──
+LLM_LOG_DIR = Path(__file__).parent.parent.parent.parent / "data" / "llm_responses"
+ARCHIVE_DIR = LLM_LOG_DIR / "archive"
+MAX_KEEP = 20
+
+
+def _archive_old_logs():
+    """Keep only MAX_KEEP most recent logs; move older ones to archive/."""
+    LLM_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+
+    files = sorted(LLM_LOG_DIR.glob("*.txt"), key=lambda f: f.stat().st_mtime, reverse=True)
+    for old in files[MAX_KEEP:]:
+        shutil.move(str(old), str(ARCHIVE_DIR / old.name))
+
+
+def _log_response(raw_response: str, parsed: dict | None = None):
+    """Save raw Moonshot response to disk with rotation."""
+    _archive_old_logs()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    filepath = LLM_LOG_DIR / f"llm_response_{timestamp}.txt"
+
+    lines = [f"Timestamp: {datetime.now().isoformat()}", "=" * 50, "RAW RESPONSE:", raw_response]
+    if parsed:
+        lines += ["", "PARSED JSON:", json.dumps(parsed, indent=2)]
+
+    filepath.write_text("\n".join(lines), encoding="utf-8")
+    return filepath
 
 # Configure Moonshot client (OpenAI-compatible API)
 moonshot_client = openai.OpenAI(
@@ -87,7 +121,6 @@ def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> 
         max_tokens=8000,
     )
 
-    import json
     raw = response.choices[0].message.content.strip()
 
     # Moonshot sometimes wraps JSON in markdown code blocks — strip them
@@ -102,6 +135,8 @@ def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> 
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as e:
+        _log_response(raw, parsed=None)
         raise ValueError(f"LLM returned invalid JSON: {e}\nRaw response:\n{raw}")
 
+    _log_response(raw, parsed=parsed)
     return parsed
