@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any
 
 from app.core.config import get_settings
+from app.core.baselines import get_baseline_for_handicap
 from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel, DrillRecommendation
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
@@ -43,11 +44,12 @@ def ingest_round(payload: RoundPayload):
     """
     supabase = get_supabase()
 
-    # 1) Insert round metadata
+    # 1) Insert round metadata (with handicap_index)
     round_insert = {
         "user_id": payload.user_id,
         "round_date": payload.round_date,
         "course": payload.course,
+        "handicap_index": payload.handicap_index,
     }
     result = supabase.table("rounds").insert(round_insert).execute()
     if not result.data:
@@ -65,10 +67,12 @@ def ingest_round(payload: RoundPayload):
             detail=f"Local embedding failed: {str(e)}"
         )
 
-    # 3) Build embeddings rows
+    # 3) Build embeddings rows with SG calculation
+    baseline = get_baseline_for_handicap(payload.handicap_index)
     embeddings_rows: List[Dict[str, Any]] = []
+
     for shot, vector in zip(payload.shots, vectors):
-        embeddings_rows.append({
+        row: Dict[str, Any] = {
             "shot_id": shot.shot_id,
             "round_id": round_id,
             "user_id": payload.user_id,
@@ -77,7 +81,33 @@ def ingest_round(payload: RoundPayload):
             "distance": shot.distance,
             "narrative": shot.narrative,
             "embedding": vector,
-        })
+            "strokes_taken": shot.strokes_taken,
+        }
+
+        # Calculate SG if all required fields are present
+        if (shot.before_distance_yards is not None and
+            shot.before_lie is not None and
+            shot.after_distance_yards is not None and
+            shot.after_lie is not None):
+
+            try:
+                sg = baseline.sg(
+                    before_distance=shot.before_distance_yards,
+                    before_lie=shot.before_lie,
+                    after_distance=shot.after_distance_yards,
+                    after_lie=shot.after_lie,
+                    strokes_taken=shot.strokes_taken,
+                )
+                row["before_distance_yards"] = shot.before_distance_yards
+                row["before_lie"] = shot.before_lie
+                row["after_distance_yards"] = shot.after_distance_yards
+                row["after_lie"] = shot.after_lie
+                row["sg_value"] = round(sg, 2)
+            except Exception:
+                # Invalid lie type or other error — skip SG, store shot without it
+                pass
+
+        embeddings_rows.append(row)
 
     # 4) Bulk insert into shot_embeddings
     if embeddings_rows:
@@ -85,9 +115,14 @@ def ingest_round(payload: RoundPayload):
         if not embed_result.data:
             raise HTTPException(status_code=500, detail="Failed to insert shot embeddings")
 
+    # Count shots with SG calculated
+    shots_with_sg = sum(1 for r in embeddings_rows if r.get("sg_value") is not None)
+
     return {
         "round_id": round_id,
         "shots_ingested": len(embeddings_rows),
+        "shots_with_sg": shots_with_sg,
+        "handicap_index": payload.handicap_index,
         "status": "success",
     }
 

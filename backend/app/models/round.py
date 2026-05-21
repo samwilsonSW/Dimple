@@ -6,10 +6,34 @@ class ShotModel(BaseModel):
     shot_id: str
     hole_number: int
     club: str
-    distance: int
+    distance: int = Field(
+        ...,
+        description="Distance the ball traveled (yards). Deprecated: use before_distance_yards + after_distance_yards for SG."
+    )
     narrative: str = Field(
         ...,
         description="e.g. 'Hit 7-iron 160 yards from fairway to green'"
+    )
+    # ── SG fields (optional for backward compat, required for SG calc) ──
+    before_distance_yards: Optional[int] = Field(
+        None,
+        description="Yards to pin before this shot"
+    )
+    before_lie: Optional[str] = Field(
+        None,
+        description="Lie before shot: tee, fairway, rough, sand, green, hazard, ob"
+    )
+    after_distance_yards: Optional[int] = Field(
+        None,
+        description="Yards (or feet if on green) to pin after this shot"
+    )
+    after_lie: Optional[str] = Field(
+        None,
+        description="Lie after shot: fairway, rough, sand, green, hazard, ob"
+    )
+    strokes_taken: int = Field(
+        default=1,
+        description="Strokes used (1 for normal, 2+ for penalties/re-hits)"
     )
 
 
@@ -17,6 +41,10 @@ class RoundPayload(BaseModel):
     user_id: str
     round_date: str
     course: Dict[str, Any]
+    handicap_index: float = Field(
+        ...,
+        description="Player's Handicap Index at time of round (e.g. 15.2, 8.4)"
+    )
     shots: List[ShotModel]
 
 
