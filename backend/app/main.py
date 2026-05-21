@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 
 from app.core.config import get_settings
 from app.core.baselines import get_baseline_for_handicap
-from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel, DrillRecommendation
+from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel, DrillRecommendation, LIE_CODES, CLUB_CODES
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
 from app.services.llm import generate_coach_response, generate_structured_coach_response
@@ -38,28 +38,31 @@ def health_check():
 def generate_shot_narrative(shot: ShotModel) -> str:
     """Auto-generate narrative from structured shot data for embedding."""
     lie_phrase = {
-        "tee": "from the tee",
-        "fairway": "from the fairway",
-        "rough": "from the rough",
-        "sand": "from the bunker",
-        "green": "on the green",
+        "T": "from the tee",
+        "F": "from the fairway",
+        "R": "from the rough",
+        "B": "from the bunker",
+        "G": "on the green",
     }.get(shot.before_lie, f"from {shot.before_lie}")
 
-    if shot.after_lie == "hole":
+    club_name = shot.club_full()
+
+    if shot.after_lie == "HOLE":
         result_phrase = "holed it"
-    elif shot.after_lie == "tee":
+    elif shot.after_lie == "T":
         result_phrase = "out of bounds, re-tee"
-    elif shot.after_lie == "green" and shot.after_distance_yards is not None:
+    elif shot.after_lie == "G" and shot.after_distance_yards is not None:
         result_phrase = f"to {shot.after_distance_yards} feet on the green"
     elif shot.after_distance_yards is not None and shot.after_lie is not None:
-        result_phrase = f"to {shot.after_distance_yards} yards in the {shot.after_lie}"
+        after_lie_name = LIE_CODES.get(shot.after_lie, shot.after_lie.lower())
+        result_phrase = f"to {shot.after_distance_yards} yards in the {after_lie_name}"
     else:
         result_phrase = "result pending"
 
-    narrative = f"{shot.club} {shot.before_distance_yards} yards {lie_phrase}, {result_phrase}"
+    narrative = f"{club_name} {shot.before_distance_yards} yards {lie_phrase}, {result_phrase}"
 
     if shot.strokes_taken > 1:
-        if shot.before_lie == "green":
+        if shot.before_lie == "G":
             narrative += f" ({shot.strokes_taken} putts)"
         else:
             narrative += f" (penalty: {shot.strokes_taken} strokes)"
@@ -125,34 +128,34 @@ def ingest_round(payload: RoundPayload):
             "hole_number": shot.hole_number,
             "shot_number": shot.shot_number,
             "before_distance_yards": shot.before_distance_yards,
-            "before_lie": shot.before_lie,
-            "club": shot.club,
+            "before_lie": shot.before_lie_full(),
+            "club": shot.club_full(),
             "after_distance_yards": shot.after_distance_yards,
-            "after_lie": shot.after_lie,
+            "after_lie": shot.after_lie_full(),
             "strokes_taken": shot.strokes_taken,
             "narrative": shot.narrative,
             "embedding": vector,
         }
 
         # Calculate SG if after-state is known
-        if (shot.after_distance_yards is not None and
-            shot.after_lie is not None and
-            shot.after_lie != "hole"):
-            try:
-                sg = baseline.sg(
-                    before_distance=shot.before_distance_yards,
-                    before_lie=shot.before_lie,
-                    after_distance=shot.after_distance_yards,
-                    after_lie=shot.after_lie,
-                    strokes_taken=shot.strokes_taken,
-                )
-                row["sg_value"] = round(sg, 2)
-            except Exception:
-                pass
-        elif shot.after_lie == "hole":
+        after_lie_full = shot.after_lie_full()
+        if after_lie_full is not None and after_lie_full != "hole":
+            if shot.after_distance_yards is not None:
+                try:
+                    sg = baseline.sg(
+                        before_distance=shot.before_distance_yards,
+                        before_lie=shot.before_lie_full(),
+                        after_distance=shot.after_distance_yards,
+                        after_lie=after_lie_full,
+                        strokes_taken=shot.strokes_taken,
+                    )
+                    row["sg_value"] = round(sg, 2)
+                except Exception:
+                    pass
+        elif after_lie_full == "hole":
             # Holed out: SG = baseline(before) - strokes_taken - 0
             try:
-                before = baseline.strokes(shot.before_distance_yards, shot.before_lie)
+                before = baseline.strokes(shot.before_distance_yards, shot.before_lie_full())
                 sg = before - shot.strokes_taken
                 row["sg_value"] = round(sg, 2)
             except Exception:
