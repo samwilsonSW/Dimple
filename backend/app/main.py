@@ -14,7 +14,7 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -31,20 +31,55 @@ def health_check():
     return {"status": "ok"}
 
 
-# ───────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# NARRATIVE GENERATOR
+# ──────────────────────────────────────────────────────────────────────────────
+
+def generate_shot_narrative(shot: ShotModel) -> str:
+    """Auto-generate narrative from structured shot data for embedding."""
+    lie_phrase = {
+        "tee": "from the tee",
+        "fairway": "from the fairway",
+        "rough": "from the rough",
+        "sand": "from the bunker",
+        "green": "on the green",
+    }.get(shot.before_lie, f"from {shot.before_lie}")
+
+    if shot.after_lie == "hole":
+        result_phrase = "holed it"
+    elif shot.after_lie == "tee":
+        result_phrase = "out of bounds, re-tee"
+    elif shot.after_lie == "green" and shot.after_distance_yards is not None:
+        result_phrase = f"to {shot.after_distance_yards} feet on the green"
+    elif shot.after_distance_yards is not None and shot.after_lie is not None:
+        result_phrase = f"to {shot.after_distance_yards} yards in the {shot.after_lie}"
+    else:
+        result_phrase = "result pending"
+
+    narrative = f"{shot.club} {shot.before_distance_yards} yards {lie_phrase}, {result_phrase}"
+
+    if shot.strokes_taken > 1:
+        if shot.before_lie == "green":
+            narrative += f" ({shot.strokes_taken} putts)"
+        else:
+            narrative += f" (penalty: {shot.strokes_taken} strokes)"
+
+    return narrative
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # INGESTION ENDPOINT
-# ───────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 
 @app.post("/api/v1/rounds")
 def ingest_round(payload: RoundPayload):
     """
-    Accept a round payload, store metadata in `rounds`,
-    embed each shot narrative locally via sentence-transformers,
-    and bulk-insert into `shot_embeddings`.
+    Accept a round payload with structured shot data.
+    Auto-generates narratives, calculates SG, embeds, and stores.
     """
     supabase = get_supabase()
 
-    # 1) Insert round metadata (with handicap_index)
+    # 1) Insert round metadata
     round_insert = {
         "user_id": payload.user_id,
         "round_date": payload.round_date,
@@ -57,8 +92,19 @@ def ingest_round(payload: RoundPayload):
 
     round_id = result.data[0]["id"]
 
-    # 2) Batch embed all shot narratives locally
-    narratives = [shot.narrative for shot in payload.shots]
+    # 2) Auto-generate narratives for all shots
+    shots_with_narrative: List[ShotModel] = []
+    for shot in payload.shots:
+        narrative = generate_shot_narrative(shot)
+        shots_with_narrative.append(
+            ShotModel(
+                **shot.model_dump(exclude={"narrative"}),
+                narrative=narrative,
+            )
+        )
+
+    # 3) Batch embed all narratives locally
+    narratives = [shot.narrative for shot in shots_with_narrative]
     try:
         vectors = embed_texts(narratives)
     except Exception as e:
@@ -67,29 +113,31 @@ def ingest_round(payload: RoundPayload):
             detail=f"Local embedding failed: {str(e)}"
         )
 
-    # 3) Build embeddings rows with SG calculation
+    # 4) Calculate SG and build rows
     baseline = get_baseline_for_handicap(payload.handicap_index)
     embeddings_rows: List[Dict[str, Any]] = []
 
-    for shot, vector in zip(payload.shots, vectors):
+    for shot, vector in zip(shots_with_narrative, vectors):
         row: Dict[str, Any] = {
             "shot_id": shot.shot_id,
             "round_id": round_id,
             "user_id": payload.user_id,
             "hole_number": shot.hole_number,
+            "shot_number": shot.shot_number,
+            "before_distance_yards": shot.before_distance_yards,
+            "before_lie": shot.before_lie,
             "club": shot.club,
-            "distance": shot.distance,
+            "after_distance_yards": shot.after_distance_yards,
+            "after_lie": shot.after_lie,
+            "strokes_taken": shot.strokes_taken,
             "narrative": shot.narrative,
             "embedding": vector,
-            "strokes_taken": shot.strokes_taken,
         }
 
-        # Calculate SG if all required fields are present
-        if (shot.before_distance_yards is not None and
-            shot.before_lie is not None and
-            shot.after_distance_yards is not None and
-            shot.after_lie is not None):
-
+        # Calculate SG if after-state is known
+        if (shot.after_distance_yards is not None and
+            shot.after_lie is not None and
+            shot.after_lie != "hole"):
             try:
                 sg = baseline.sg(
                     before_distance=shot.before_distance_yards,
@@ -98,24 +146,26 @@ def ingest_round(payload: RoundPayload):
                     after_lie=shot.after_lie,
                     strokes_taken=shot.strokes_taken,
                 )
-                row["before_distance_yards"] = shot.before_distance_yards
-                row["before_lie"] = shot.before_lie
-                row["after_distance_yards"] = shot.after_distance_yards
-                row["after_lie"] = shot.after_lie
                 row["sg_value"] = round(sg, 2)
             except Exception:
-                # Invalid lie type or other error — skip SG, store shot without it
+                pass
+        elif shot.after_lie == "hole":
+            # Holed out: SG = baseline(before) - strokes_taken - 0
+            try:
+                before = baseline.strokes(shot.before_distance_yards, shot.before_lie)
+                sg = before - shot.strokes_taken
+                row["sg_value"] = round(sg, 2)
+            except Exception:
                 pass
 
         embeddings_rows.append(row)
 
-    # 4) Bulk insert into shot_embeddings
+    # 5) Bulk insert into shot_embeddings
     if embeddings_rows:
         embed_result = supabase.table("shot_embeddings").insert(embeddings_rows).execute()
         if not embed_result.data:
             raise HTTPException(status_code=500, detail="Failed to insert shot embeddings")
 
-    # Count shots with SG calculated
     shots_with_sg = sum(1 for r in embeddings_rows if r.get("sg_value") is not None)
 
     return {
@@ -127,9 +177,9 @@ def ingest_round(payload: RoundPayload):
     }
 
 
-# ───────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # RAG COACH ENDPOINT
-# ───────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 
 @app.post("/api/v1/coach/ask", response_model=CoachResponse)
 def coach_ask(query: CoachQuery):
@@ -165,16 +215,16 @@ def coach_ask(query: CoachQuery):
     # 3) Assemble context for the LLM
     context_blocks = []
     for i, shot in enumerate(similar_shots, 1):
+        sg_note = f" (SG: {shot['sg_value']:+.2f})" if shot.get('sg_value') is not None else ""
         context_blocks.append(
-            f"Shot {i}: {shot['narrative']} (Club: {shot['club']}, "
-            f"Distance: {shot['distance']}y, Hole: {shot['hole_number']})"
+            f"Shot {i}: {shot['narrative']}{sg_note}"
         )
 
     context_text = "\n".join(context_blocks) if context_blocks else "No relevant shot history found."
 
     system_prompt = (
         "You are Dimple Coach, an expert golf coach. You have access to the player's "
-        "historical shot data. Be direct, data-driven, and actionable. "
+        "historical shot data with Strokes Gained values. Be direct, data-driven, and actionable. "
         "Ground every insight in the provided context. If you don't have enough data, say so."
     )
 

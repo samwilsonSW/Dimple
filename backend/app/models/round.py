@@ -3,37 +3,56 @@ from typing import List, Optional, Dict, Any
 
 
 class ShotModel(BaseModel):
+    """
+    Structured shot data from user input.
+
+    The user provides 3 things per shot:
+    1. Distance to pin (yards, or feet if on green)
+    2. Lie type: F/R/B/G
+    3. Club code: D/H/3W/5W/3-9/G/L/P
+
+    For putting (previous lie = G):
+    - Input initial putt distance (feet)
+    - Input how many putts to hole
+    """
     shot_id: str
     hole_number: int
-    club: str
-    distance: int = Field(
+    shot_number: int = Field(..., description="1 = tee shot, 2 = approach, etc.")
+
+    # ── User input ──
+    before_distance_yards: int = Field(
         ...,
-        description="Distance the ball traveled (yards). Deprecated: use before_distance_yards + after_distance_yards for SG."
+        description="Yards to pin before this shot (feet if on green)"
     )
-    narrative: str = Field(
+    before_lie: str = Field(
         ...,
-        description="e.g. 'Hit 7-iron 160 yards from fairway to green'"
+        description="Lie before shot: tee, fairway, rough, sand, green"
     )
-    # ── SG fields (optional for backward compat, required for SG calc) ──
-    before_distance_yards: Optional[int] = Field(
-        None,
-        description="Yards to pin before this shot"
+    club: str = Field(
+        ...,
+        description="Club used: Driver, 3-wood, 5-wood, Hybrid, 3-9 iron, PW, GW, SW, LW, Putter"
     )
-    before_lie: Optional[str] = Field(
-        None,
-        description="Lie before shot: tee, fairway, rough, sand, green, hazard, ob"
-    )
+
+    # ── Derived from next shot (or 0 if holed) ──
     after_distance_yards: Optional[int] = Field(
         None,
-        description="Yards (or feet if on green) to pin after this shot"
+        description="Yards to pin after this shot (NULL if not yet known)"
     )
     after_lie: Optional[str] = Field(
         None,
-        description="Lie after shot: fairway, rough, sand, green, hazard, ob"
+        description="Lie after shot: fairway, rough, sand, green, hole"
     )
+
+    # ── Strokes ──
     strokes_taken: int = Field(
         default=1,
-        description="Strokes used (1 for normal, 2+ for penalties/re-hits)"
+        description="Strokes used (1 for normal, 2+ for penalties, putt count for putting)"
+    )
+
+    # ── Auto-generated narrative for embedding ──
+    narrative: Optional[str] = Field(
+        None,
+        description="Auto-generated from structured data. Leave null — backend generates this."
     )
 
 
