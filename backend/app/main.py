@@ -284,6 +284,46 @@ def coach_ask(query: CoachQuery):
 
     context_text = "\n".join(context_blocks) if context_blocks else "No relevant shot history found."
 
+    # Check for 25+ handicap — gently redirect to fundamentals
+    try:
+        player_result = supabase.table("rounds").select("handicap_index").eq("user_id", query.user_id).order("round_date", desc=True).limit(1).execute()
+        player_handicap = player_result.data[0]["handicap_index"] if player_result.data else 0
+    except Exception:
+        player_handicap = 0
+    
+    if player_handicap >= 25:
+        return CoachResponse(
+            answer=(
+                "At a 25+ handicap, the fastest path to improvement is building solid fundamentals: "
+                "consistent contact, basic chipping, and two-putting. Once you're regularly breaking 100, "
+                "we can dive into detailed analytics. For now, focus on: (1) hitting the range 2x/week, "
+                "(2) short game practice, and (3) playing with purpose — pick one thing to work on each round."
+            ),
+            confidence=5,
+            key_insights=[
+                "25+ handicap: fundamentals over analytics",
+                "Focus: consistent contact, basic chipping, two-putting",
+                "Goal: regularly break 100 before detailed analysis",
+            ],
+            drill_recommendations=[
+                DrillRecommendation(
+                    priority=1,
+                    focus_area="fundamentals",
+                    drill_name="7-Iron Consistency",
+                    instructions="Hit 20 7-irons focusing on solid contact. Don't worry about distance, just crisp strikes.",
+                    expected_outcome="Clean contact 80% of the time",
+                ),
+                DrillRecommendation(
+                    priority=2,
+                    focus_area="short game",
+                    drill_name="Chip-and-Putt",
+                    instructions="Drop 5 balls 10 yards off the green. Chip to hole, then putt. Repeat 3 times.",
+                    expected_outcome="Get up-and-down 2 out of 5 times",
+                ),
+            ],
+            context=[],
+        )
+
     system_prompt = (
         "You are Dimple Coach, an expert golf coach. You have access to the player's "
         "historical shot data with Strokes Gained values. Be direct, data-driven, and actionable. "

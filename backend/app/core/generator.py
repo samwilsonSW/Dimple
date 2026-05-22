@@ -34,6 +34,18 @@ class HandicapStats:
     putts_std: float
 
 
+# Score variance increases with handicap — higher handicaps have more "bad days"
+# σ (std dev) scales linearly: 0hcp ±3, 25hcp ±11
+# This reflects real golf: beginners are wildly inconsistent, scratch players are steady
+SCORE_VARIANCE = {
+    0: 3.0,
+    5: 4.5,
+    10: 6.0,
+    15: 7.5,
+    20: 9.0,
+    25: 11.0,
+}
+
 HANDICAP_STATS = {
     0: HandicapStats(avg_score=74.6, avg_drive_yards=274, drive_std=18, fairway_pct=0.565, gir_pct=0.568, up_down_pct=0.500, avg_putts=31.3, putts_std=2.5),
     5: HandicapStats(avg_score=79.0, avg_drive_yards=258, drive_std=20, fairway_pct=0.510, gir_pct=0.461, up_down_pct=0.377, avg_putts=32.5, putts_std=2.8),
@@ -72,6 +84,27 @@ def _get_stats(handicap: float) -> HandicapStats:
         avg_putts=_interp(lower.avg_putts, upper.avg_putts),
         putts_std=_interp(lower.putts_std, upper.putts_std),
     )
+
+
+def _get_score_variance(handicap: float) -> float:
+    """Get score standard deviation for a handicap.
+    
+    Higher handicaps have more variance — more "bad days".
+    0hcp: ±3 strokes, 25hcp: ±11 strokes.
+    """
+    handicap = max(0.0, min(float(handicap), 25.0))
+    brackets = sorted(SCORE_VARIANCE.keys())
+    
+    if int(handicap) in SCORE_VARIANCE:
+        return SCORE_VARIANCE[int(handicap)]
+    
+    lower_h = max(h for h in brackets if h < handicap)
+    upper_h = min(h for h in brackets if h > handicap)
+    ratio = (handicap - lower_h) / (upper_h - lower_h)
+    
+    lower = SCORE_VARIANCE[lower_h]
+    upper = SCORE_VARIANCE[upper_h]
+    return lower + ratio * (upper - lower)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -411,8 +444,13 @@ def generate_round(
     course_name: str = "Pine Valley Golf Club",
     round_date: str = "2026-05-21",
 ) -> Dict[str, Any]:
-    """Generate a complete synthetic round."""
+    """Generate a complete synthetic round.
+    
+    Score variance increases with handicap — higher handicaps have more "bad days".
+    A 0hcp might shoot 72-78, while a 25hcp might shoot 88-132.
+    """
     stats = _get_stats(handicap)
+    variance = _get_score_variance(handicap)
     round_id = f"round_{uuid.uuid4().hex[:8]}"
 
     all_shots: List[ShotModel] = []
@@ -422,6 +460,46 @@ def generate_round(
         hole_shots, hole_score = generate_hole(i, template, stats, user_id, round_id)
         all_shots.extend(hole_shots)
         total_score += hole_score
+
+    # Apply score variance: shift total score based on handicap-adjusted std dev
+    # Higher handicaps get more negative variance (more bad days)
+    # We use a skewed distribution: bad days are worse than good days are good
+    if variance > 0:
+        raw_shift = random.gauss(0, variance)
+        # Apply skew: shift distribution toward higher scores (bad days)
+        if raw_shift > 0:
+            shift = raw_shift * 0.6  # Good days are modestly better
+        else:
+            shift = raw_shift * 1.4  # Bad days are significantly worse
+        
+        # For very high handicaps, occasional meltdown rounds
+        if handicap >= 20 and random.random() < 0.15:
+            shift -= variance * 1.5  # Extra bad day
+        
+        # Cap the shift to prevent absurd scores (no one shoots 45 or 150)
+        max_shift = int(variance * 2.5)
+        shift = max(-max_shift, min(max_shift, shift))
+        
+        # Apply shift by adding/removing penalty strokes to random holes
+        shift_strokes = int(round(shift))
+        if shift_strokes != 0:
+            # Distribute extra strokes across holes (penalties, chunks, etc.)
+            direction = 1 if shift_strokes > 0 else -1
+            holes_to_penalize = random.sample(range(1, 19), min(abs(shift_strokes), 18))
+            for hole_num in holes_to_penalize:
+                # Find a shot on this hole and add/remove a stroke
+                for shot in all_shots:
+                    if shot.hole_number == hole_num:
+                        if direction > 0 and shot.strokes_taken >= 1:
+                            # Add a penalty stroke
+                            shot.strokes_taken += 1
+                            total_score += 1
+                            break
+                        elif direction < 0 and shot.strokes_taken > 1:
+                            # Remove a stroke (career round — holed out, etc.)
+                            shot.strokes_taken -= 1
+                            total_score -= 1
+                            break
 
     return {
         "user_id": user_id,
@@ -437,6 +515,7 @@ def generate_round(
         "shots": [s.model_dump() for s in all_shots],
         "_meta": {
             "total_score": total_score,
+            "score_variance_applied": variance,
             "round_id": round_id,
         },
     }

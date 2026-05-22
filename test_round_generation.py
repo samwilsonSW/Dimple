@@ -174,6 +174,9 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
         "G": "Gap wedge", "L": "Lob wedge", "P": "Putter"
     }
     
+    # Calculate per-shot SG (same as main.py ingestion)
+    baseline = get_baseline_for_handicap(round_data['handicap_index'])
+    
     context_blocks = []
     for i, shot in enumerate(round_data['shots'], 1):
         club = club_map.get(shot['club'], shot['club'])
@@ -204,7 +207,30 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
             else:
                 narrative += f" (penalty: {shot['strokes_taken']} strokes)"
         
-        context_blocks.append(f"Shot {i}: {narrative}")
+        # Calculate per-shot SG (same as main.py)
+        sg = None
+        after_lie_full = None
+        if shot['after_lie'] == "HOLE":
+            after_lie_full = "hole"
+        elif shot['after_lie'] in lie_map:
+            after_lie_full = lie_map[shot['after_lie']]
+        
+        if after_lie_full and shot['after_distance_yards'] is not None:
+            try:
+                if after_lie_full == "hole":
+                    before = baseline.strokes(shot['before_distance_yards'], before_lie)
+                    sg = before - shot['strokes_taken']
+                else:
+                    sg = baseline.sg(
+                        shot['before_distance_yards'], before_lie,
+                        shot['after_distance_yards'], after_lie_full,
+                        shot['strokes_taken']
+                    )
+            except Exception:
+                pass
+        
+        sg_note = f" (SG: {sg:+.2f})" if sg is not None else ""
+        context_blocks.append(f"Shot {i}: {narrative}{sg_note}")
     
     context_text = "\n".join(context_blocks)
     sg_summary = calculate_sg_summary(round_data)
