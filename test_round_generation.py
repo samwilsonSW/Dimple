@@ -176,19 +176,28 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
     
     context_blocks = []
     for i, shot in enumerate(round_data['shots'], 1):
-        before_lie = lie_map.get(shot['before_lie'], shot['before_lie'])
         club = club_map.get(shot['club'], shot['club'])
+        before_lie = lie_map.get(shot['before_lie'], shot['before_lie'])
         
-        if shot['after_lie'] == "HOLE":
-            result = "holed it"
-        elif shot['after_lie'] == "G":
-            result = f"to {shot['after_distance_yards']} feet on the green"
-        elif shot['after_lie'] in lie_map:
-            result = f"to {shot['after_distance_yards']} yards in the {lie_map[shot['after_lie']]}"
+        # Before-state: distance to pin + lie
+        if shot['before_lie'] == "T":
+            before_phrase = f"{shot['before_distance_yards']} yards to pin, tee shot"
+        elif shot['before_lie'] == "G":
+            before_phrase = f"{shot['before_distance_yards']} feet to pin, putting"
         else:
-            result = "result pending"
+            before_phrase = f"{shot['before_distance_yards']} yards to pin, in {before_lie}"
         
-        narrative = f"{club} {shot['before_distance_yards']} yards from the {before_lie}, {result}"
+        # After-state
+        if shot['after_lie'] == "HOLE":
+            after_phrase = "holed"
+        elif shot['after_lie'] == "G":
+            after_phrase = f"to {shot['after_distance_yards']} feet on green"
+        elif shot['after_lie'] in lie_map:
+            after_phrase = f"to {shot['after_distance_yards']} yards to pin, in {lie_map[shot['after_lie']]}"
+        else:
+            after_phrase = "result pending"
+        
+        narrative = f"{club}: {before_phrase} → {after_phrase}"
         if shot['strokes_taken'] > 1:
             if shot['before_lie'] == "G":
                 narrative += f" ({shot['strokes_taken']} putts)"

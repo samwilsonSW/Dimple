@@ -36,30 +36,44 @@ def health_check():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def generate_shot_narrative(shot: ShotModel) -> str:
-    """Auto-generate narrative from structured shot data for embedding."""
-    lie_phrase = {
-        "T": "from the tee",
-        "F": "from the fairway",
-        "R": "from the rough",
-        "B": "from the bunker",
-        "G": "on the green",
-    }.get(shot.before_lie, f"from {shot.before_lie}")
-
+    """Auto-generate narrative from structured shot data for embedding.
+    
+    Format emphasizes distance TO the pin (not distance OF the shot)
+    to avoid LLM confusion about shot length vs. remaining distance.
+    """
     club_name = shot.club_full()
+    
+    # Before-state: distance to pin + lie
+    before_lie_name = {
+        "T": "tee",
+        "F": "fairway",
+        "R": "rough",
+        "B": "bunker",
+        "G": "green",
+    }.get(shot.before_lie, shot.before_lie)
+    
+    if shot.before_lie == "T":
+        before_phrase = f"{shot.before_distance_yards} yards to pin, tee shot"
+    elif shot.before_lie == "G":
+        before_phrase = f"{shot.before_distance_yards} feet to pin, putting"
+    else:
+        before_phrase = f"{shot.before_distance_yards} yards to pin, in {before_lie_name}"
 
+    # After-state: where the ball ended up
     if shot.after_lie == "HOLE":
-        result_phrase = "holed it"
+        after_phrase = "holed"
     elif shot.after_lie == "T":
-        result_phrase = "out of bounds, re-tee"
+        after_phrase = "out of bounds, re-tee"
     elif shot.after_lie == "G" and shot.after_distance_yards is not None:
-        result_phrase = f"to {shot.after_distance_yards} feet on the green"
+        after_phrase = f"to {shot.after_distance_yards} feet on green"
     elif shot.after_distance_yards is not None and shot.after_lie is not None:
         after_lie_name = LIE_CODES.get(shot.after_lie, shot.after_lie.lower())
-        result_phrase = f"to {shot.after_distance_yards} yards in the {after_lie_name}"
+        after_phrase = f"to {shot.after_distance_yards} yards to pin, in {after_lie_name}"
     else:
-        result_phrase = "result pending"
+        after_phrase = "result pending"
 
-    narrative = f"{club_name} {shot.before_distance_yards} yards {lie_phrase}, {result_phrase}"
+    # Build narrative: "Club: [before] → [after]"
+    narrative = f"{club_name}: {before_phrase} → {after_phrase}"
 
     if shot.strokes_taken > 1:
         if shot.before_lie == "G":
