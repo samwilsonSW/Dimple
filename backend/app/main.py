@@ -14,7 +14,7 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="0.4.0",
+    version="0.5.0",
 )
 
 app.add_middleware(
@@ -82,12 +82,13 @@ def ingest_round(payload: RoundPayload):
     """
     supabase = get_supabase()
 
-    # 1) Insert round metadata
+    # 1) Insert round metadata (including reflection if provided)
     round_insert = {
         "user_id": payload.user_id,
         "round_date": payload.round_date,
         "course": payload.course,
         "handicap_index": payload.handicap_index,
+        "reflection": payload.reflection,
     }
     result = supabase.table("rounds").insert(round_insert).execute()
     if not result.data:
@@ -176,6 +177,7 @@ def ingest_round(payload: RoundPayload):
         "shots_ingested": len(embeddings_rows),
         "shots_with_sg": shots_with_sg,
         "handicap_index": payload.handicap_index,
+        "reflection_saved": payload.reflection is not None,
         "status": "success",
     }
 
@@ -215,7 +217,50 @@ def coach_ask(query: CoachQuery):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Supabase vector search failed: {str(e)}")
 
-    # 3) Assemble context for the LLM
+    # 3) Retrieve recent round reflections for this player
+    try:
+        reflections_result = supabase.table("rounds").select("round_date, reflection").eq("user_id", query.user_id).not_.is_("reflection", "null").order("round_date", desc=True).limit(3).execute()
+        reflections = reflections_result.data or []
+    except Exception:
+        reflections = []
+
+    reflection_text = ""
+    if reflections:
+        reflection_blocks = []
+        for r in reflections:
+            reflection_blocks.append(f"Round ({r['round_date']}): {r['reflection']}")
+        reflection_text = "\n".join(reflection_blocks)
+
+    # 4) Calculate SG category totals from retrieved shots
+    sg_categories = {"driving": 0.0, "approach": 0.0, "short_game": 0.0, "putting": 0.0}
+    category_counts = {"driving": 0, "approach": 0, "short_game": 0, "putting": 0}
+
+    for shot in similar_shots:
+        sg = shot.get("sg_value")
+        if sg is None:
+            continue
+        lie = shot.get("before_lie", "")
+        if lie == "tee":
+            cat = "driving"
+        elif lie in ("fairway", "rough"):
+            cat = "approach"
+        elif lie in ("sand",):
+            cat = "short_game"
+        elif lie == "green":
+            cat = "putting"
+        else:
+            cat = "approach"
+        sg_categories[cat] += float(sg)
+        category_counts[cat] += 1
+
+    sg_summary_lines = []
+    for cat, total in sg_categories.items():
+        count = category_counts[cat]
+        if count > 0:
+            sg_summary_lines.append(f"{cat}: {total:+.2f} SG ({count} shots)")
+    sg_summary = "\n".join(sg_summary_lines) if sg_summary_lines else "No SG data available."
+
+    # 5) Assemble context for the LLM
     context_blocks = []
     for i, shot in enumerate(similar_shots, 1):
         sg_note = f" (SG: {shot['sg_value']:+.2f})" if shot.get('sg_value') is not None else ""
@@ -231,11 +276,30 @@ def coach_ask(query: CoachQuery):
         "Ground every insight in the provided context. If you don't have enough data, say so."
     )
 
-    user_prompt = (
-        f"Player Question: {query.question}\n\n"
-        f"Relevant Shot History:\n{context_text}\n\n"
-        f"Based strictly on the shot history above, provide a helpful coaching response."
-    )
+    user_prompt_parts = [
+        f"Player Question: {query.question}",
+        "",
+        "Strokes Gained Summary (from retrieved shots):",
+        sg_summary,
+        "",
+        "Relevant Shot History:",
+        context_text,
+    ]
+
+    if reflection_text:
+        user_prompt_parts.extend([
+            "",
+            "Player's Recent Round Reflections:",
+            reflection_text,
+        ])
+
+    user_prompt_parts.extend([
+        "",
+        "Based on the shot history, SG summary, and any player reflections above, provide a helpful coaching response. "
+        "Connect the quantitative data (SG) with the qualitative observations (reflections) when both are available."
+    ])
+
+    user_prompt = "\n".join(user_prompt_parts)
 
     # 4) Call Moonshot LLM (structured JSON)
     try:

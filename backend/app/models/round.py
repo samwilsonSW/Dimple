@@ -127,6 +127,10 @@ class RoundPayload(BaseModel):
         description="Player's Handicap Index at time of round (e.g. 15.2, 8.4)"
     )
     shots: List[ShotModel]
+    reflection: Optional[str] = Field(
+        None,
+        description="Player's 3-5 sentence reflection on the round. What stood out, what was good/bad, tendencies noticed."
+    )
 
 
 class CoachQuery(BaseModel):
