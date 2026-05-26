@@ -447,11 +447,21 @@ def calculate_sg(
     )
 
 
+# ── Default course par by hole (for par 3 detection) ──
+# Holes 3, 7, 12, 16 are par 3s in the default course
+PAR3_HOLES = {3, 7, 12, 16}
+
+
+def is_par3(hole_number: int) -> bool:
+    """Check if a hole is a par 3 (default course layout)."""
+    return hole_number in PAR3_HOLES
+
+
 # ── Category mapping for aggregation ──
 # Per Broadie's "Every Shot Counts":
-# - Driving: tee shots
-# - Approach: fairway/rough shots 50+ yards from hole
-# - Short Game: any shot inside 50 yards, not on green (includes sand, chips, pitches)
+# - Driving: tee shots on par 4/5
+# - Approach: tee shots on par 3 + shots 50+ yards not from tee
+# - Short Game: any shot inside 50 yards, not on green
 # - Putting: green shots
 CATEGORY_MAP = {
     "tee": "driving",
@@ -464,13 +474,14 @@ CATEGORY_MAP = {
 }
 
 
-def get_category(lie: LieType, distance_yards: Optional[int] = None) -> str:
+def get_category(lie: LieType, distance_yards: Optional[int] = None, hole_number: Optional[int] = None) -> str:
     """Map a lie type to a performance category for SG aggregation.
     
     Per Broadie's "Every Shot Counts":
     - Inside 50 yards and not on green = short game (chips, pitches, bunker shots)
     - 50+ yards from fairway/rough/sand/hazard = approach
-    - Tee shots = driving
+    - Tee shots on par 4/5 = driving
+    - Tee shots on par 3 = approach (treated as fairway lie for baseline)
     - Green shots = putting
     """
     # Putting is always putting
@@ -478,14 +489,13 @@ def get_category(lie: LieType, distance_yards: Optional[int] = None) -> str:
         return "putting"
     
     # Inside 50 yards (and not on green) = short game per Broadie
-    # This includes sand/hazard shots from close range (bunker chips, etc.)
-    # Long bunker/hazard shots (50+ yards) classify as approach below
     if distance_yards is not None and distance_yards < 50:
         return "short_game"
     
-    # 50+ yards: driving from tee, approach from everywhere else
+    # Tee shots: par 3 = approach, par 4/5 = driving
     if lie == "tee":
-        return "driving"
+        par3 = is_par3(hole_number) if hole_number is not None else False
+        return "approach" if par3 else "driving"
     
     # Everything else at 50+ yards is approach (including long bunker shots)
     return "approach"

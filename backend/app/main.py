@@ -277,19 +277,21 @@ def coach_ask(query: CoachQuery):
             continue
         lie = shot.get("before_lie", "")
         distance = shot.get("before_distance_yards")
+        hole_num = shot.get("hole_number")
         
         # Per Broadie's "Every Shot Counts":
         # Inside 50 yards and not on green = short game
+        # Tee shots on par 3 = approach, par 4/5 = driving
         if lie == "green":
             cat = "putting"
         elif distance is not None and distance < 50:
             cat = "short_game"
         elif lie == "tee":
-            cat = "driving"
-        elif lie in ("fairway", "rough"):
+            # Par 3 tee shots are approach, not driving
+            from app.core.baselines import is_par3
+            cat = "approach" if is_par3(hole_num) else "driving"
+        elif lie in ("fairway", "rough", "sand", "hazard"):
             cat = "approach"
-        # Note: sand/hazard shots <50 yards are caught by distance rule above
-        # Long bunker shots (50+ yards) classify as approach via fallback
         else:
             cat = "approach"
         sg_categories[cat] += float(sg)

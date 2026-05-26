@@ -148,7 +148,7 @@ def calculate_sg_summary(round_data: dict) -> str:
                         shot['strokes_taken']
                     )
                 
-                cat = get_category(lie_full, shot['before_distance_yards'])
+                cat = get_category(lie_full, shot['before_distance_yards'], shot['hole_number'])
                 sg_categories[cat] += sg
                 category_counts[cat] += 1
             except Exception:
