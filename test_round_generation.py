@@ -119,13 +119,12 @@ def calculate_sg_summary(round_data: dict) -> str:
         before_lie = shot['before_lie']
         after_lie = shot['after_lie']
         
-        # Putting: only count the "holed" putt with hole-level SG
+        # Putting: count ALL putts, but only add SG on the "holed" putt
         if shot['club'] == "P":
+            category_counts["putting"] += 1
             if shot['after_lie'] == "HOLE":
                 sg = putting_sg_by_hole.get(shot['hole_number'], 0)
                 sg_categories["putting"] += sg
-                category_counts["putting"] += 1
-            # Missed putts: don't count in summary
             continue
         
         # Map to full lie names for SG calc
