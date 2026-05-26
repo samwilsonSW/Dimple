@@ -83,8 +83,10 @@ def display_shots(round_data: dict):
         after_lie = shot['after_lie']
         if after_lie == "HOLE":
             after_str = "holed"
-        elif after_lie == "G":
+        elif after_lie == "G" and shot['before_lie'] == "G":
             after_str = "missed"
+        elif after_lie == "G":
+            after_str = "on green"
         elif after_lie in lie_map:
             after_str = f"{shot['after_distance_yards']}y to {lie_map[after_lie]}"
         else:
@@ -195,8 +197,10 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
         # After-state
         if shot['after_lie'] == "HOLE":
             after_phrase = "holed"
-        elif shot['after_lie'] == "G":
+        elif shot['after_lie'] == "G" and shot['before_lie'] == "G":
             after_phrase = "missed"
+        elif shot['after_lie'] == "G":
+            after_phrase = "on green"
         elif shot['after_lie'] in lie_map:
             after_phrase = f"to {shot['after_distance_yards']} yards to pin, in {lie_map[shot['after_lie']]}"
         else:
