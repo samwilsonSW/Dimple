@@ -448,6 +448,11 @@ def calculate_sg(
 
 
 # ── Category mapping for aggregation ──
+# Per Broadie's "Every Shot Counts":
+# - Driving: tee shots
+# - Approach: fairway/rough shots 50+ yards from hole
+# - Short Game: any shot inside 50 yards, not on green (includes sand, chips, pitches)
+# - Putting: green shots
 CATEGORY_MAP = {
     "tee": "driving",
     "fairway": "approach",
@@ -459,8 +464,24 @@ CATEGORY_MAP = {
 }
 
 
-def get_category(lie: LieType) -> str:
-    """Map a lie type to a performance category for SG aggregation."""
+def get_category(lie: LieType, distance_yards: Optional[int] = None) -> str:
+    """Map a lie type to a performance category for SG aggregation.
+    
+    Per Broadie's "Every Shot Counts":
+    - Inside 50 yards and not on green = short game (chips, pitches, bunker shots)
+    - 50+ yards from fairway/rough = approach
+    - Tee shots = driving
+    - Green shots = putting
+    """
+    # Putting is always putting
+    if lie == "green":
+        return "putting"
+    
+    # Inside 50 yards (and not on green) = short game per Broadie
+    if distance_yards is not None and distance_yards < 50:
+        return "short_game"
+    
+    # Otherwise use lie-based mapping
     return CATEGORY_MAP.get(lie, "approach")
 
 

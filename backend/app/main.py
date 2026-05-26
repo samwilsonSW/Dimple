@@ -276,14 +276,20 @@ def coach_ask(query: CoachQuery):
         if sg is None:
             continue
         lie = shot.get("before_lie", "")
-        if lie == "tee":
+        distance = shot.get("before_distance_yards")
+        
+        # Per Broadie's "Every Shot Counts":
+        # Inside 50 yards and not on green = short game
+        if lie == "green":
+            cat = "putting"
+        elif distance is not None and distance < 50:
+            cat = "short_game"
+        elif lie == "tee":
             cat = "driving"
         elif lie in ("fairway", "rough"):
             cat = "approach"
-        elif lie in ("sand",):
+        elif lie in ("sand", "hazard"):
             cat = "short_game"
-        elif lie == "green":
-            cat = "putting"
         else:
             cat = "approach"
         sg_categories[cat] += float(sg)
