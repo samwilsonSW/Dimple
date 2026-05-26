@@ -55,7 +55,7 @@ def generate_shot_narrative(shot: ShotModel) -> str:
     if shot.before_lie == "T":
         before_phrase = f"{shot.before_distance_yards} yards to pin, tee shot"
     elif shot.before_lie == "G":
-        before_phrase = f"{shot.before_distance_yards} feet to pin, putting"
+        before_phrase = "putt"
     else:
         before_phrase = f"{shot.before_distance_yards} yards to pin, in {before_lie_name}"
 
@@ -64,8 +64,8 @@ def generate_shot_narrative(shot: ShotModel) -> str:
         after_phrase = "holed"
     elif shot.after_lie == "T":
         after_phrase = "out of bounds, re-tee"
-    elif shot.after_lie == "G" and shot.after_distance_yards is not None and shot.after_distance_yards > 0:
-        after_phrase = f"to {shot.after_distance_yards} feet on green"
+    elif shot.after_lie == "G":
+        after_phrase = "missed"
     elif shot.after_distance_yards is not None and shot.after_lie is not None:
         after_lie_name = LIE_CODES.get(shot.after_lie, shot.after_lie.lower())
         after_phrase = f"to {shot.after_distance_yards} yards to pin, in {after_lie_name}"

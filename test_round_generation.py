@@ -83,8 +83,8 @@ def display_shots(round_data: dict):
         after_lie = shot['after_lie']
         if after_lie == "HOLE":
             after_str = "holed"
-        elif after_lie == "G" and shot['after_distance_yards'] is not None and shot['after_distance_yards'] > 0:
-            after_str = f"{shot['after_distance_yards']} feet on green"
+        elif after_lie == "G":
+            after_str = "missed"
         elif after_lie in lie_map:
             after_str = f"{shot['after_distance_yards']}y to {lie_map[after_lie]}"
         else:
@@ -188,15 +188,15 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
         if shot['before_lie'] == "T":
             before_phrase = f"{shot['before_distance_yards']} yards to pin, tee shot"
         elif shot['before_lie'] == "G":
-            before_phrase = f"{shot['before_distance_yards']} feet to pin, putting"
+            before_phrase = "putt"
         else:
             before_phrase = f"{shot['before_distance_yards']} yards to pin, in {before_lie}"
         
         # After-state
         if shot['after_lie'] == "HOLE":
             after_phrase = "holed"
-        elif shot['after_lie'] == "G" and shot['after_distance_yards'] is not None and shot['after_distance_yards'] > 0:
-            after_phrase = f"to {shot['after_distance_yards']} feet on green"
+        elif shot['after_lie'] == "G":
+            after_phrase = "missed"
         elif shot['after_lie'] in lie_map:
             after_phrase = f"to {shot['after_distance_yards']} yards to pin, in {lie_map[shot['after_lie']]}"
         else:
