@@ -288,8 +288,8 @@ def coach_ask(query: CoachQuery):
             cat = "driving"
         elif lie in ("fairway", "rough"):
             cat = "approach"
-        elif lie in ("sand", "hazard"):
-            cat = "short_game"
+        # Note: sand/hazard shots <50 yards are caught by distance rule above
+        # Long bunker shots (50+ yards) classify as approach via fallback
         else:
             cat = "approach"
         sg_categories[cat] += float(sg)

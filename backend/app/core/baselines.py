@@ -469,7 +469,7 @@ def get_category(lie: LieType, distance_yards: Optional[int] = None) -> str:
     
     Per Broadie's "Every Shot Counts":
     - Inside 50 yards and not on green = short game (chips, pitches, bunker shots)
-    - 50+ yards from fairway/rough = approach
+    - 50+ yards from fairway/rough/sand/hazard = approach
     - Tee shots = driving
     - Green shots = putting
     """
@@ -478,11 +478,17 @@ def get_category(lie: LieType, distance_yards: Optional[int] = None) -> str:
         return "putting"
     
     # Inside 50 yards (and not on green) = short game per Broadie
+    # This includes sand/hazard shots from close range (bunker chips, etc.)
+    # Long bunker/hazard shots (50+ yards) classify as approach below
     if distance_yards is not None and distance_yards < 50:
         return "short_game"
     
-    # Otherwise use lie-based mapping
-    return CATEGORY_MAP.get(lie, "approach")
+    # 50+ yards: driving from tee, approach from everywhere else
+    if lie == "tee":
+        return "driving"
+    
+    # Everything else at 50+ yards is approach (including long bunker shots)
+    return "approach"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
