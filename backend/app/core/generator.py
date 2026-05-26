@@ -133,6 +133,30 @@ def _putts(stats: HandicapStats) -> int:
     return max(1, min(5, int(round(p))))
 
 
+def _add_putt_shots(shots: List[ShotModel], hole_num: int, start_shot_num: int, round_id: str, start_dist: int, num_putts: int) -> int:
+    """Add individual putt shot records. Returns number of strokes added."""
+    shot_num = start_shot_num
+    dist = start_dist
+    for i in range(num_putts):
+        is_last = (i == num_putts - 1)
+        after_dist = 0 if is_last else random.randint(3, max(4, dist - 1))
+        after_lie = "HOLE" if is_last else "G"
+        shots.append(ShotModel(
+            shot_id=f"{round_id}_h{hole_num}_s{shot_num}",
+            hole_number=hole_num,
+            shot_number=shot_num,
+            before_distance_yards=dist,
+            before_lie="G",
+            club="P",
+            after_distance_yards=after_dist,
+            after_lie=after_lie,
+            strokes_taken=1,
+        ))
+        shot_num += 1
+        dist = after_dist
+    return num_putts
+
+
 def _approach_dist() -> int:
     """Distance from pin after approach (feet if on green, yards if missed)."""
     r = random.random()
@@ -197,6 +221,13 @@ def generate_hole(hole_num: int, template: HoleTemplate, stats: HandicapStats, u
         shot_num += 1
         strokes += taken
 
+    def add_putts(start_dist, num_putts):
+        """Add individual putt shots. Each putt is a separate record."""
+        nonlocal shot_num, strokes
+        strokes_added = _add_putt_shots(shots, hole_num, shot_num, round_id, start_dist, num_putts)
+        shot_num += strokes_added
+        strokes += strokes_added
+
     def maybe_penalty():
         """Higher handicaps hit more penalties (water, OB)."""
         penalty_prob = max(0, (stats.avg_score - 80) * 0.004)
@@ -213,7 +244,7 @@ def generate_hole(hole_num: int, template: HoleTemplate, stats: HandicapStats, u
             dist = _approach_dist()
             add_shot(remaining, "T", _club(remaining, "T"), dist, "G")
             p = _putts(stats)
-            add_shot(dist, "G", "P", 0, "HOLE", p)
+            add_putts(dist, p)
         else:
             miss = random.choices(["R", "B", "F"], weights=[0.6, 0.25, 0.15])[0]
             dist = random.randint(10, 35)
@@ -239,7 +270,7 @@ def generate_hole(hole_num: int, template: HoleTemplate, stats: HandicapStats, u
             dist = _approach_dist()
             add_shot(remaining, after, _club(remaining, after), dist, "G")
             p = _putts(stats)
-            add_shot(dist, "G", "P", 0, "HOLE", p)
+            add_putts(dist, p)
         else:
             miss = random.choices(["R", "B", "F"], weights=[0.5, 0.3, 0.2])[0]
             dist = random.randint(10, 35)
@@ -267,7 +298,7 @@ def generate_hole(hole_num: int, template: HoleTemplate, stats: HandicapStats, u
                 dist = _approach_dist()
                 add_shot(remaining, after, _club(remaining, after), dist, "G")
                 p = _putts(stats)
-                add_shot(dist, "G", "P", 0, "HOLE", p)
+                add_putts(dist, p)
             else:
                 miss = random.choices(["R", "B", "F"], weights=[0.5, 0.3, 0.2])[0]
                 dist = random.randint(10, 35)
@@ -285,7 +316,7 @@ def generate_hole(hole_num: int, template: HoleTemplate, stats: HandicapStats, u
                 dist = _approach_dist()
                 add_shot(remaining, "F", _club(remaining, "F"), dist, "G")
                 p = _putts(stats)
-                add_shot(dist, "G", "P", 0, "HOLE", p)
+                add_putts(dist, p)
             else:
                 miss = random.choices(["R", "B", "F"], weights=[0.5, 0.3, 0.2])[0]
                 dist = random.randint(10, 35)
@@ -305,7 +336,6 @@ def _short_game(hole_num: int, shots: List[ShotModel], distance: int, lie: str, 
 
     if _up_down(stats):
         # Up-and-down: chip to 3-20 feet, then 1-2 putts
-        # Even successful up-downs aren't always tap-ins
         dist = random.randint(3, 20)
         shots.append(ShotModel(
             shot_id=f"{round_id}_h{hole_num}_s{shot_num}",
@@ -322,18 +352,8 @@ def _short_game(hole_num: int, shots: List[ShotModel], distance: int, lie: str, 
         strokes += 1
         # 1-putt from close, 2-putt from farther out
         putts = 1 if dist <= 8 else 2
-        shots.append(ShotModel(
-            shot_id=f"{round_id}_h{hole_num}_s{shot_num}",
-            hole_number=hole_num,
-            shot_number=shot_num,
-            before_distance_yards=dist,
-            before_lie="G",
-            club="P",
-            after_distance_yards=0,
-            after_lie="HOLE",
-            strokes_taken=putts,
-        ))
-        strokes += putts
+        strokes += _add_putt_shots(shots, hole_num, shot_num, round_id, dist, putts)
+        shot_num += putts
     else:
         # Miss chip — sometimes chunk it
         if random.random() < chunk_prob:
@@ -367,18 +387,8 @@ def _short_game(hole_num: int, shots: List[ShotModel], distance: int, lie: str, 
             ))
             shot_num += 1
             strokes += 1
-            shots.append(ShotModel(
-                shot_id=f"{round_id}_h{hole_num}_s{shot_num}",
-                hole_number=hole_num,
-                shot_number=shot_num,
-                before_distance_yards=dist2,
-                before_lie="G",
-                club="P",
-                after_distance_yards=0,
-                after_lie="HOLE",
-                strokes_taken=2,
-            ))
-            strokes += 2
+            strokes += _add_putt_shots(shots, hole_num, shot_num, round_id, dist2, 2)
+            shot_num += 2
         else:
             dist = random.randint(15, 30)
             shots.append(ShotModel(
@@ -394,18 +404,8 @@ def _short_game(hole_num: int, shots: List[ShotModel], distance: int, lie: str, 
             ))
             shot_num += 1
             strokes += 1
-            shots.append(ShotModel(
-                shot_id=f"{round_id}_h{hole_num}_s{shot_num}",
-                hole_number=hole_num,
-                shot_number=shot_num,
-                before_distance_yards=dist,
-                before_lie="G",
-                club="P",
-                after_distance_yards=0,
-                after_lie="HOLE",
-                strokes_taken=2,
-            ))
-            strokes += 2
+            strokes += _add_putt_shots(shots, hole_num, shot_num, round_id, dist, 2)
+            shot_num += 2
 
     return strokes
 

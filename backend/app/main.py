@@ -64,7 +64,7 @@ def generate_shot_narrative(shot: ShotModel) -> str:
         after_phrase = "holed"
     elif shot.after_lie == "T":
         after_phrase = "out of bounds, re-tee"
-    elif shot.after_lie == "G" and shot.after_distance_yards is not None:
+    elif shot.after_lie == "G" and shot.after_distance_yards is not None and shot.after_distance_yards > 0:
         after_phrase = f"to {shot.after_distance_yards} feet on green"
     elif shot.after_distance_yards is not None and shot.after_lie is not None:
         after_lie_name = LIE_CODES.get(shot.after_lie, shot.after_lie.lower())
@@ -75,11 +75,8 @@ def generate_shot_narrative(shot: ShotModel) -> str:
     # Build narrative: "Club: [before] → [after]"
     narrative = f"{club_name}: {before_phrase} → {after_phrase}"
 
-    if shot.strokes_taken > 1:
-        if shot.before_lie == "G":
-            narrative += f" ({shot.strokes_taken} putts)"
-        else:
-            narrative += f" (penalty: {shot.strokes_taken} strokes)"
+    if shot.strokes_taken > 1 and shot.before_lie != "G":
+        narrative += f" (penalty: {shot.strokes_taken} strokes)"
 
     return narrative
 
