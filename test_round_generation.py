@@ -103,9 +103,30 @@ def calculate_sg_summary(round_data: dict) -> str:
     sg_categories = {"driving": 0.0, "approach": 0.0, "short_game": 0.0, "putting": 0.0}
     category_counts = {"driving": 0, "approach": 0, "short_game": 0, "putting": 0}
     
+    # Pre-compute hole-level putting SG
+    putts_by_hole = {}
+    for shot in round_data['shots']:
+        if shot['club'] == "P":
+            putts_by_hole.setdefault(shot['hole_number'], []).append(shot)
+    
+    putting_sg_by_hole = {}
+    for hole_num, putts in putts_by_hole.items():
+        total_putts = len(putts)
+        expected_putts = baseline.putts_per_hole()
+        putting_sg_by_hole[hole_num] = expected_putts - total_putts
+    
     for shot in round_data['shots']:
         before_lie = shot['before_lie']
         after_lie = shot['after_lie']
+        
+        # Putting: only count the "holed" putt with hole-level SG
+        if shot['club'] == "P":
+            if shot['after_lie'] == "HOLE":
+                sg = putting_sg_by_hole.get(shot['hole_number'], 0)
+                sg_categories["putting"] += sg
+                category_counts["putting"] += 1
+            # Missed putts: don't count in summary
+            continue
         
         # Map to full lie names for SG calc
         lie_full = {"T": "tee", "F": "fairway", "R": "rough", "B": "sand", "G": "green"}.get(before_lie, before_lie)
