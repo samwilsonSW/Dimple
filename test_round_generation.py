@@ -225,10 +225,13 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
         # Calculate per-shot SG (same as main.py)
         sg = None
         
-        # Putting: hole-level SG assigned to the "holed" putt
-        if shot['club'] == "P" and shot['after_lie'] == "HOLE":
-            sg = putting_sg_by_hole.get(shot['hole_number'])
-        elif shot['after_lie'] == "HOLE" and shot['club'] != "P":
+        # Putting: hole-level SG assigned ONLY to the "holed" putt
+        # Missed putts show no SG to avoid confusing the LLM
+        if shot['club'] == "P":
+            if shot['after_lie'] == "HOLE":
+                sg = putting_sg_by_hole.get(shot['hole_number'])
+            # Missed putts: no SG shown
+        elif shot['after_lie'] == "HOLE":
             # Non-putt holed out (chip-in, etc.)
             try:
                 before = baseline.strokes(shot['before_distance_yards'], before_lie)

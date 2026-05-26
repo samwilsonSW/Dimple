@@ -167,11 +167,14 @@ def ingest_round(payload: RoundPayload):
         # Calculate SG if after-state is known
         after_lie_full = shot.after_lie_full()
         
-        # Putting: hole-level SG assigned to the "holed" putt
-        if shot.club == "P" and shot.after_lie == "HOLE":
-            sg = putting_sg_by_hole.get(shot.hole_number)
-            if sg is not None:
-                row["sg_value"] = round(sg, 2)
+        # Putting: hole-level SG assigned ONLY to the "holed" putt
+        # Missed putts show no SG to avoid confusing the LLM
+        if shot.club == "P":
+            if shot.after_lie == "HOLE":
+                sg = putting_sg_by_hole.get(shot.hole_number)
+                if sg is not None:
+                    row["sg_value"] = round(sg, 2)
+            # Missed putts: no SG shown
         elif after_lie_full is not None and after_lie_full != "hole":
             # Non-putting, non-holed shot
             if shot.after_distance_yards is not None:
@@ -186,7 +189,7 @@ def ingest_round(payload: RoundPayload):
                     row["sg_value"] = round(sg, 2)
                 except Exception:
                     pass
-        elif after_lie_full == "hole" and shot.club != "P":
+        elif after_lie_full == "hole":
             # Non-putt holed out (chip-in, etc.)
             try:
                 before = baseline.strokes(shot.before_distance_yards, shot.before_lie_full())
