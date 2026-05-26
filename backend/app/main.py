@@ -134,6 +134,19 @@ def ingest_round(payload: RoundPayload):
     baseline = get_baseline_for_handicap(payload.handicap_index)
     embeddings_rows: List[Dict[str, Any]] = []
 
+    # Pre-compute putting SG per hole
+    # Group putts by hole, calculate hole-level putting SG
+    putts_by_hole: Dict[int, List[ShotModel]] = {}
+    for shot in shots_with_narrative:
+        if shot.club == "P":
+            putts_by_hole.setdefault(shot.hole_number, []).append(shot)
+    
+    putting_sg_by_hole: Dict[int, float] = {}
+    for hole_num, putts in putts_by_hole.items():
+        total_putts = len(putts)
+        expected_putts = baseline.putts_per_hole()
+        putting_sg_by_hole[hole_num] = expected_putts - total_putts
+
     for shot, vector in zip(shots_with_narrative, vectors):
         row: Dict[str, Any] = {
             "shot_id": shot.shot_id,
@@ -153,7 +166,14 @@ def ingest_round(payload: RoundPayload):
 
         # Calculate SG if after-state is known
         after_lie_full = shot.after_lie_full()
-        if after_lie_full is not None and after_lie_full != "hole":
+        
+        # Putting: hole-level SG assigned to the "holed" putt
+        if shot.club == "P" and shot.after_lie == "HOLE":
+            sg = putting_sg_by_hole.get(shot.hole_number)
+            if sg is not None:
+                row["sg_value"] = round(sg, 2)
+        elif after_lie_full is not None and after_lie_full != "hole":
+            # Non-putting, non-holed shot
             if shot.after_distance_yards is not None:
                 try:
                     sg = baseline.sg(
@@ -166,8 +186,8 @@ def ingest_round(payload: RoundPayload):
                     row["sg_value"] = round(sg, 2)
                 except Exception:
                     pass
-        elif after_lie_full == "hole":
-            # Holed out: SG = baseline(before) - strokes_taken - 0
+        elif after_lie_full == "hole" and shot.club != "P":
+            # Non-putt holed out (chip-in, etc.)
             try:
                 before = baseline.strokes(shot.before_distance_yards, shot.before_lie_full())
                 sg = before - shot.strokes_taken

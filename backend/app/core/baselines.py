@@ -322,6 +322,24 @@ class HandicapBaseline:
         after = self.strokes(after_distance, after_lie)
         return before - strokes_taken - after
 
+    def putts_per_hole(self) -> float:
+        """Expected putts per hole for this handicap (from Break X Golf avg_putts / 18)."""
+        # These match the avg_putts in HANDICAP_STATS in generator.py
+        # 0:31.3, 5:32.5, 10:33.9, 15:34.8, 20:36.1, 25:37.0
+        putts_map = {0: 31.3, 5: 32.5, 10: 33.9, 15: 34.8, 20: 36.1, 25: 37.0}
+        
+        if self.handicap in putts_map:
+            return putts_map[self.handicap] / 18.0
+        
+        # Interpolate
+        brackets = sorted(putts_map.keys())
+        lower_h = max(h for h in brackets if h < self.handicap)
+        upper_h = min(h for h in brackets if h > self.handicap)
+        ratio = (self.handicap - lower_h) / (upper_h - lower_h)
+        lower_val = putts_map[lower_h] / 18.0
+        upper_val = putts_map[upper_h] / 18.0
+        return lower_val + ratio * (upper_val - lower_val)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # FACTORY: Get baseline for any handicap

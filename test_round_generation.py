@@ -181,6 +181,18 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
     # Calculate per-shot SG (same as main.py ingestion)
     baseline = get_baseline_for_handicap(round_data['handicap_index'])
     
+    # Pre-compute putting SG per hole
+    putts_by_hole = {}
+    for shot in round_data['shots']:
+        if shot['club'] == "P":
+            putts_by_hole.setdefault(shot['hole_number'], []).append(shot)
+    
+    putting_sg_by_hole = {}
+    for hole_num, putts in putts_by_hole.items():
+        total_putts = len(putts)
+        expected_putts = baseline.putts_per_hole()
+        putting_sg_by_hole[hole_num] = expected_putts - total_putts
+    
     context_blocks = []
     for i, shot in enumerate(round_data['shots'], 1):
         club = club_map.get(shot['club'], shot['club'])
@@ -212,25 +224,29 @@ def build_prompt_preview(round_data: dict, reflection: str, question: str = "How
         
         # Calculate per-shot SG (same as main.py)
         sg = None
-        after_lie_full = None
-        if shot['after_lie'] == "HOLE":
-            after_lie_full = "hole"
-        elif shot['after_lie'] in lie_map:
-            after_lie_full = lie_map[shot['after_lie']]
         
-        if after_lie_full and shot['after_distance_yards'] is not None:
+        # Putting: hole-level SG assigned to the "holed" putt
+        if shot['club'] == "P" and shot['after_lie'] == "HOLE":
+            sg = putting_sg_by_hole.get(shot['hole_number'])
+        elif shot['after_lie'] == "HOLE" and shot['club'] != "P":
+            # Non-putt holed out (chip-in, etc.)
             try:
-                if after_lie_full == "hole":
-                    before = baseline.strokes(shot['before_distance_yards'], before_lie)
-                    sg = before - shot['strokes_taken']
-                else:
+                before = baseline.strokes(shot['before_distance_yards'], before_lie)
+                sg = before - shot['strokes_taken']
+            except Exception:
+                pass
+        elif shot['after_lie'] in lie_map:
+            # Non-putting shot
+            after_lie_full = lie_map[shot['after_lie']]
+            if shot['after_distance_yards'] is not None:
+                try:
                     sg = baseline.sg(
                         shot['before_distance_yards'], before_lie,
                         shot['after_distance_yards'], after_lie_full,
                         shot['strokes_taken']
                     )
-            except Exception:
-                pass
+                except Exception:
+                    pass
         
         sg_note = f" (SG: {sg:+.2f})" if sg is not None else ""
         context_blocks.append(f"Shot {i}: {narrative}{sg_note}")
