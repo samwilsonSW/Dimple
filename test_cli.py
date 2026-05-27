@@ -147,7 +147,7 @@ def cmd_generate(handicap: str, count: str = "1"):
     # Import here to avoid startup delay
     try:
         sys.path.insert(0, str(Path(__file__).parent / "backend"))
-        from backend.app.core.reflection_generator import generate_round
+        from backend.app.core.generator import generate_round
         from backend.app.core.reflection_generator import generate_reflection
     except ImportError as e:
         print(f"❌ Import error: {e}")
@@ -194,8 +194,8 @@ def cmd_generate_all():
 
     try:
         sys.path.insert(0, str(Path(__file__).parent / "backend"))
-        from app.core.generator import generate_round
-        from app.core.reflection_generator import generate_reflection
+        from backend.app.core.generator import generate_round
+        from backend.app.core.reflection_generator import generate_reflection
     except ImportError as e:
         print(f"❌ Import error: {e}")
         return
