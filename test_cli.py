@@ -10,6 +10,9 @@ Commands:
     /user <user_id>         Set active player context
     /health                 Check API health
     /list                   List available test round files
+    /generate <hcp> [n]     Generate n rounds for handicap (default: 1)
+    /generate-all           Generate full test dataset (6 hcp x 10 rounds)
+    /save-last <file>       Save last generated round(s) to file
     /help                   Show help
     /quit, /exit, /q        Exit the CLI
 
@@ -25,6 +28,7 @@ DATA_DIR = Path(__file__).parent / "data" / "rounds"
 
 # ── Session State ──
 _current_user: str | None = None
+_last_generated: list = []  # Store last generated round(s)
 
 
 def print_banner():
@@ -45,6 +49,9 @@ Commands (prefix with /):
   /user <user_id>      Set active player context
   /health              Check if API is running
   /list                Show available test round files
+  /generate <hcp> [n]  Generate n rounds for handicap (with reflection)
+  /generate-all        Generate full dataset: 6 hcp x 10 = 60 rounds
+  /save-last <file>    Save last generated round(s) to JSON file
   /clear               Clear the screen
   /help                Show this help
   /quit /exit /q       Exit
@@ -53,6 +60,10 @@ Examples:
   /user player_29hcp
   How do I stop pushing my 6 iron?
   /ingest round_13hcp.json
+  /generate 15         Generate one 15hcp round with reflection
+  /generate 10 5       Generate five 10hcp rounds
+  /generate-all        Generate full 60-round test dataset
+  /save-last my_round.json
   /user player_3hcp
   What should I work on to go pro?
 """)
@@ -114,6 +125,130 @@ def cmd_ingest(filename: str):
             print(f"❌ Error {r.status_code}: {r.text}")
     except Exception as e:
         print(f"❌ Failed: {e}")
+
+
+def cmd_generate(handicap: str, count: str = "1"):
+    """Generate round(s) with LLM reflection."""
+    global _last_generated
+    _last_generated = []
+
+    try:
+        hcp = float(handicap)
+        n = int(count)
+    except ValueError:
+        print("Usage: /generate <handicap> [count]")
+        print("  Example: /generate 15")
+        print("  Example: /generate 10 5")
+        return
+
+    print(f"🎲 Generating {n} round(s) for {hcp}hcp...")
+    print("   (Requires MOONSHOT_API_KEY in .env)")
+
+    # Import here to avoid startup delay
+    try:
+        sys.path.insert(0, str(Path(__file__).parent / "backend"))
+        from app.core.generator import generate_round
+        from app.core.reflection_generator import generate_reflection
+    except ImportError as e:
+        print(f"❌ Import error: {e}")
+        print("   Make sure you're running from the Dimple directory")
+        return
+
+    for i in range(n):
+        try:
+            round_data = generate_round(
+                handicap=hcp,
+                user_id=f"test_player_hcp{int(hcp)}",
+            )
+
+            # Generate reflection
+            print(f"   [{i+1}/{n}] Generating reflection...", end=" ", flush=True)
+            reflection = generate_reflection(round_data, temperature=0.8)
+            round_data["reflection"] = reflection
+
+            # Calculate score
+            score = sum(s["strokes_taken"] for s in round_data["shots"])
+
+            # Store (clean up internal meta)
+            round_data.pop("_meta", None)
+            _last_generated.append(round_data)
+
+            print(f"✅ Score: {score}")
+            print(f"   Reflection: {reflection[:80]}...")
+
+        except Exception as e:
+            print(f"❌ Failed: {e}")
+
+    print(f"\n📦 Generated {len(_last_generated)} round(s)")
+    print(f"   Use /save-last <file.json> to save")
+
+
+def cmd_generate_all():
+    """Generate full 60-round test dataset."""
+    global _last_generated
+    _last_generated = []
+
+    print("🎲 Generating full test dataset (6 hcp x 10 = 60 rounds)...")
+    print("   This will take ~2-3 minutes and requires MOONSHOT_API_KEY")
+    print()
+
+    try:
+        sys.path.insert(0, str(Path(__file__).parent / "backend"))
+        from app.core.generator import generate_round
+        from app.core.reflection_generator import generate_reflection
+    except ImportError as e:
+        print(f"❌ Import error: {e}")
+        return
+
+    handicaps = [0, 5, 10, 15, 20, 25]
+    total = len(handicaps) * 10
+    count = 0
+
+    for hcp in handicaps:
+        print(f"\n--- Handicap {hcp} ---")
+        for i in range(10):
+            count += 1
+            try:
+                round_data = generate_round(
+                    handicap=hcp,
+                    user_id=f"test_player_hcp{hcp}",
+                )
+                reflection = generate_reflection(round_data, temperature=0.8)
+                round_data["reflection"] = reflection
+                round_data.pop("_meta", None)
+
+                score = sum(s["strokes_taken"] for s in round_data["shots"])
+                _last_generated.append(round_data)
+
+                print(f"  [{count:3d}/{total}] Score: {score:3d} | {reflection[:60]}...")
+
+            except Exception as e:
+                print(f"  [{count:3d}/{total}] ❌ Failed: {e}")
+
+    print(f"\n📦 Generated {len(_last_generated)}/{total} rounds")
+    print(f"   Use /save-last <file.jsonl> to save")
+
+
+def cmd_save_last(filename: str):
+    """Save last generated round(s) to file."""
+    global _last_generated
+    if not _last_generated:
+        print("❌ No rounds generated yet. Use /generate or /generate-all first.")
+        return
+
+    filepath = Path(filename)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    # JSONL for multiple, JSON for single
+    if len(_last_generated) == 1:
+        with open(filepath, "w") as f:
+            json.dump(_last_generated[0], f, indent=2)
+    else:
+        with open(filepath, "w") as f:
+            for r in _last_generated:
+                f.write(json.dumps(r) + "\n")
+
+    print(f"💾 Saved {len(_last_generated)} round(s) to {filepath}")
 
 
 def cmd_ask(question: str):
@@ -226,6 +361,21 @@ def main():
                     print("Usage: /ingest <filename>")
                     continue
                 cmd_ingest(parts[1])
+
+            elif cmd == "generate":
+                if len(parts) < 2:
+                    print("Usage: /generate <handicap> [count]")
+                    continue
+                cmd_generate(parts[1], parts[2] if len(parts) > 2 else "1")
+
+            elif cmd == "generate-all":
+                cmd_generate_all()
+
+            elif cmd == "save-last":
+                if len(parts) < 2:
+                    print("Usage: /save-last <filename>")
+                    continue
+                cmd_save_last(parts[1])
 
             else:
                 print(f"Unknown command: /{cmd}")
