@@ -262,7 +262,7 @@ def cmd_ask(question: str):
         r = requests.post(
             f"{API_BASE}/api/v1/coach/ask",
             json={"user_id": _current_user, "question": question},
-            timeout=60
+            timeout=120
         )
         if r.status_code == 200:
             result = r.json()
