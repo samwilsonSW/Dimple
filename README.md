@@ -37,16 +37,16 @@ Aim for 80% gate success before moving to targets.
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   Player    │────▶│  FastAPI     │────▶│  Supabase       │
-│  (Mobile)   │     │  Backend     │     │  (Postgres +    │
-└─────────────┘     └──────────────┘     │   pgvector)     │
-       │                   │              └─────────────────┘
-       │                   │                       ▲
-       │                   ▼                       │
-       │            ┌──────────────┐              │
-       │            │  Local       │              │
-       │            │  Embeddings  │──────────────┘
+┌────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│   Player       │───▶│  FastAPI     │────▶│  Supabase       │
+│  (Mobile soon) │     │  Backend     │     │  (Postgres +    │
+└────────────────┘     └──────────────┘     │   pgvector)     │
+       │                   │                └─────────────────┘
+       │                   │                        ▲
+       │                   ▼                        │
+       │            ┌──────────────┐                │
+       │            │  Local       │                │
+       │            │  Embeddings  │────────────────┘
        │            │  (384-dim)   │
        │            └──────────────┘
        │                   │
@@ -212,13 +212,12 @@ python dimple_tui.py
 - [ ] **LLM-as-Judge evaluation** — Automated quality scoring for coach responses
 - [ ] **Mobile frontend** — PWA for shot logging and coach chat
 - [ ] **Trend analysis** — Multi-round improvement tracking
-- [ ] **Video integration** — Swing analysis alongside shot data
 
 ---
 
 ## Why This Project
 
-Most golf apps track scores. Dimple tracks **why** you scored that way — and tells you how to fix it.
+Most golf apps track scores. Dimple aims to help you improve your scores.
 
 The technical challenge isn't just building a chatbot. It's:
 - Designing a data model that captures enough context per shot
