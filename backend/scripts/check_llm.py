@@ -24,6 +24,13 @@ try:
         ],
         max_tokens=10,
     )
-    print(f"✅ Success! Response: {response.choices[0].message.content}")
+    print(f"✅ Success!")
+    print(f"   Response type: {type(response)}")
+    print(f"   Choices count: {len(response.choices)}")
+    print(f"   Message type: {type(response.choices[0].message)}")
+    print(f"   Content: {repr(response.choices[0].message.content)}")
+    print(f"   Finish reason: {response.choices[0].finish_reason}")
+    if hasattr(response, 'usage'):
+        print(f"   Usage: {response.usage}")
 except Exception as e:
     print(f"❌ Failed: {type(e).__name__}: {e}")
