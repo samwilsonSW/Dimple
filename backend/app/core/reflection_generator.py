@@ -149,7 +149,7 @@ def build_reflection_prompt(summary: Dict[str, Any]) -> str:
 # LLM CALL
 # ──────────────────────────────────────────────────────────────────────────────
 
-def generate_reflection(round_data: Dict[str, Any], temperature: float = 0.8) -> str:
+def generate_reflection(round_data: Dict[str, Any], temperature: float = 1.0) -> str:
     """Generate a realistic reflection for a synthetic round.
 
     Args:
@@ -189,7 +189,7 @@ def generate_round_with_reflection(
     user_id: str,
     course_name: str = "Pine Valley Golf Club",
     round_date: str = "2026-05-27",
-    temperature: float = 0.8,
+    temperature: float = 1.0,
 ) -> Dict[str, Any]:
     """Generate a complete round with LLM-generated reflection.
 

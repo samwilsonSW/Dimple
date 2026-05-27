@@ -1,0 +1,57 @@
+Timestamp: 2026-05-19T21:04:39.131851
+==================================================
+RAW RESPONSE:
+{
+  "answer": "Your putting data reveals a specific, fixable problem: catastrophic distance control on long lag putts. All 5 recorded three-putts occurred from 20-35 yards (60-105 feet), indicating you're consistently leaving yourself 6-10+ foot comebackers or missing those seconds. This isn't a global 'broken' stroke—it's a lag putting calibration failure. From 90+ feet, your goal is simply to cozy the ball inside a 3-foot circle; you're likely either decelerating through the ball or failing to match stroke length to the required distance. The catastrophic self-talk ('completely broken', 'disaster') is also creating tension that kills feel. We have no data on your short putting (inside 6 feet), so I cannot assess whether your stroke mechanics fail on short putts, but the three-putt pattern exclusively points to long-range distance control.",
+  "confidence": 5,
+  "key_insights": [
+    "100% of recorded putts are three-putts from extreme long range (20-35 yards/60-105 feet), indicating severe lag putting distance control failure",
+    "Zero successful two-putts from these distances suggests consistent failure to hit the 'safe zone' (inside 3 feet) on first putts",
+    "Pattern spans 5 different holes (4, 6, 10, 13, 18), eliminating green-reading or specific slope anomalies as the root cause",
+    "Catastrophic labeling in self-talk ('disaster', 'completely broken') indicates performance anxiety that compounds technical errors by inhibiting the relaxed rhythm required for distance control"
+  ],
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "focus_area": "20-35 yard lag putting distance control",
+      "drill_name": "The 3-Foot Circle Ladder",
+      "instructions": "Place tees at 20y, 25y, 30y, and 35y. From each distance, hit 5 balls with the sole objective of stopping them inside a 3-foot radius circle around the hole—do not look at the hole during the stroke, look at your entry point. Use 70% stroke length on backswing and 70% on through-swing (no deceleration). If you leave it outside 3 feet, it's a 'failure' even if you make the next one. Track your 'safe zone' percentage.",
+      "expected_outcome": "Achieving 80% of lag putts from these distances inside the 3-foot circle, automatically eliminating three-putts and reducing your putting strokes from 3.0 to 2.0-2.2 on these holes"
+    },
+    {
+      "priority": 2,
+      "focus_area": "Pressure comeback putting",
+      "drill_name": "The Tax Collector",
+      "instructions": "Lag 10 balls from 30 yards with your normal stroke. Wherever each ball stops, you must make the remaining putt. If you miss, you owe 10 pushups (or $1 to charity). This simulates the specific pressure of the 'must-make' second putt after a poor lag. Focus on accelerating the putterhead through impact on these 4-8 footers.",
+      "expected_outcome": "Developing the mental resilience to convert 85%+ of 4-8 foot comebackers, ensuring that even imperfect lags don't result in three-putts"
+    }
+  ]
+}
+
+PARSED JSON:
+{
+  "answer": "Your putting data reveals a specific, fixable problem: catastrophic distance control on long lag putts. All 5 recorded three-putts occurred from 20-35 yards (60-105 feet), indicating you're consistently leaving yourself 6-10+ foot comebackers or missing those seconds. This isn't a global 'broken' stroke\u2014it's a lag putting calibration failure. From 90+ feet, your goal is simply to cozy the ball inside a 3-foot circle; you're likely either decelerating through the ball or failing to match stroke length to the required distance. The catastrophic self-talk ('completely broken', 'disaster') is also creating tension that kills feel. We have no data on your short putting (inside 6 feet), so I cannot assess whether your stroke mechanics fail on short putts, but the three-putt pattern exclusively points to long-range distance control.",
+  "confidence": 5,
+  "key_insights": [
+    "100% of recorded putts are three-putts from extreme long range (20-35 yards/60-105 feet), indicating severe lag putting distance control failure",
+    "Zero successful two-putts from these distances suggests consistent failure to hit the 'safe zone' (inside 3 feet) on first putts",
+    "Pattern spans 5 different holes (4, 6, 10, 13, 18), eliminating green-reading or specific slope anomalies as the root cause",
+    "Catastrophic labeling in self-talk ('disaster', 'completely broken') indicates performance anxiety that compounds technical errors by inhibiting the relaxed rhythm required for distance control"
+  ],
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "focus_area": "20-35 yard lag putting distance control",
+      "drill_name": "The 3-Foot Circle Ladder",
+      "instructions": "Place tees at 20y, 25y, 30y, and 35y. From each distance, hit 5 balls with the sole objective of stopping them inside a 3-foot radius circle around the hole\u2014do not look at the hole during the stroke, look at your entry point. Use 70% stroke length on backswing and 70% on through-swing (no deceleration). If you leave it outside 3 feet, it's a 'failure' even if you make the next one. Track your 'safe zone' percentage.",
+      "expected_outcome": "Achieving 80% of lag putts from these distances inside the 3-foot circle, automatically eliminating three-putts and reducing your putting strokes from 3.0 to 2.0-2.2 on these holes"
+    },
+    {
+      "priority": 2,
+      "focus_area": "Pressure comeback putting",
+      "drill_name": "The Tax Collector",
+      "instructions": "Lag 10 balls from 30 yards with your normal stroke. Wherever each ball stops, you must make the remaining putt. If you miss, you owe 10 pushups (or $1 to charity). This simulates the specific pressure of the 'must-make' second putt after a poor lag. Focus on accelerating the putterhead through impact on these 4-8 footers.",
+      "expected_outcome": "Developing the mental resilience to convert 85%+ of 4-8 foot comebackers, ensuring that even imperfect lags don't result in three-putts"
+    }
+  ]
+}

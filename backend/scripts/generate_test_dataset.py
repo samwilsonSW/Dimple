@@ -55,7 +55,7 @@ def generate_single(handicap: float) -> Dict[str, Any]:
         handicap=handicap,
         user_id=f"test_player_hcp{int(handicap)}",
     )
-    reflection = generate_reflection(round_data, temperature=0.8)
+    reflection = generate_reflection(round_data, temperature=1.0)
     round_data["reflection"] = reflection
     round_data.pop("_meta", None)
     return round_data
@@ -88,7 +88,7 @@ def generate_dataset() -> List[Dict[str, Any]]:
                     round_date=round_date,
                 )
 
-                reflection = generate_reflection(round_data, temperature=0.8)
+                reflection = generate_reflection(round_data, temperature=1.0)
                 round_data["reflection"] = reflection
                 round_data.pop("_meta", None)
 

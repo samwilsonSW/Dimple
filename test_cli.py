@@ -142,7 +142,7 @@ def cmd_generate(handicap: str, count: str = "1"):
         return
 
     print(f"🎲 Generating {n} round(s) for {hcp}hcp...")
-    print("   (Requires MOONSHOT_API_KEY in .env)")
+    
 
     # Import here to avoid startup delay
     try:
@@ -163,7 +163,7 @@ def cmd_generate(handicap: str, count: str = "1"):
 
             # Generate reflection
             print(f"   [{i+1}/{n}] Generating reflection...", end=" ", flush=True)
-            reflection = generate_reflection(round_data, temperature=0.8)
+            reflection = generate_reflection(round_data, temperature=1.0)
             round_data["reflection"] = reflection
 
             # Calculate score
@@ -213,7 +213,7 @@ def cmd_generate_all():
                     handicap=hcp,
                     user_id=f"test_player_hcp{hcp}",
                 )
-                reflection = generate_reflection(round_data, temperature=0.8)
+                reflection = generate_reflection(round_data, temperature=1.0)
                 round_data["reflection"] = reflection
                 round_data.pop("_meta", None)
 
