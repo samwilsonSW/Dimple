@@ -162,22 +162,31 @@ def generate_reflection(round_data: Dict[str, Any], temperature: float = 1.0) ->
     summary = summarize_round(round_data)
     user_prompt = build_reflection_prompt(summary)
 
-    response = moonshot_client.chat.completions.create(
-        model="kimi-k2.5",
-        messages=[
-            {"role": "system", "content": REFLECTION_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=temperature,
-        max_tokens=200,
-    )
+    # Debug: log what we're sending
+    print(f"   [reflection] Prompt length: {len(user_prompt)} chars")
 
-    reflection = response.choices[0].message.content.strip()
-    # Clean up quotes if LLM wraps in them
-    if reflection.startswith('"') and reflection.endswith('"'):
-        reflection = reflection[1:-1]
+    try:
+        response = moonshot_client.chat.completions.create(
+            model="kimi-k2.5",
+            messages=[
+                {"role": "system", "content": REFLECTION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=200,
+        )
 
-    return reflection
+        reflection = response.choices[0].message.content.strip()
+        # Clean up quotes if LLM wraps in them
+        if reflection.startswith('"') and reflection.endswith('"'):
+            reflection = reflection[1:-1]
+
+        print(f"   [reflection] Got response: {len(reflection)} chars")
+        return reflection
+
+    except Exception as e:
+        print(f"   [reflection] LLM call failed: {type(e).__name__}: {str(e)[:100]}")
+        raise
 
 
 # ──────────────────────────────────────────────────────────────────────────────
