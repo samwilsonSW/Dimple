@@ -166,17 +166,26 @@ def generate_reflection(round_data: Dict[str, Any], temperature: float = 1.0) ->
     print(f"   [reflection] Prompt length: {len(user_prompt)} chars")
 
     try:
+        # Combine system + user into single user message for compatibility
+        full_prompt = f"{REFLECTION_SYSTEM_PROMPT}\n\n---\n\n{user_prompt}"
+        
         response = moonshot_client.chat.completions.create(
             model="kimi-k2.5",
             messages=[
-                {"role": "system", "content": REFLECTION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
+                {"role": "user", "content": full_prompt},
             ],
             temperature=temperature,
             max_tokens=200,
         )
 
-        reflection = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        print(f"   [reflection] Raw content: {repr(content)}")
+        
+        if not content:
+            print("   [reflection] WARNING: Empty response from LLM")
+            return ""
+            
+        reflection = content.strip()
         # Clean up quotes if LLM wraps in them
         if reflection.startswith('"') and reflection.endswith('"'):
             reflection = reflection[1:-1]
