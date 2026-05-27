@@ -16,6 +16,8 @@ print(f"Key prefix: {settings.moonshot_api_key[:15]}..." if settings.moonshot_ap
 print()
 
 print("=== Testing API Call ===")
+# Test 1: Small max_tokens (may fail with length)
+print("\n--- Test 1: max_tokens=10 ---")
 try:
     response = moonshot_client.chat.completions.create(
         model="kimi-k2.5",
@@ -24,13 +26,39 @@ try:
         ],
         max_tokens=10,
     )
-    print(f"✅ Success!")
-    print(f"   Response type: {type(response)}")
-    print(f"   Choices count: {len(response.choices)}")
-    print(f"   Message type: {type(response.choices[0].message)}")
     print(f"   Content: {repr(response.choices[0].message.content)}")
     print(f"   Finish reason: {response.choices[0].finish_reason}")
-    if hasattr(response, 'usage'):
-        print(f"   Usage: {response.usage}")
+    print(f"   Usage: {response.usage}")
 except Exception as e:
-    print(f"❌ Failed: {type(e).__name__}: {e}")
+    print(f"   ❌ Failed: {type(e).__name__}: {e}")
+
+# Test 2: Larger max_tokens
+print("\n--- Test 2: max_tokens=100 ---")
+try:
+    response = moonshot_client.chat.completions.create(
+        model="kimi-k2.5",
+        messages=[
+            {"role": "user", "content": "Say 'hello' and nothing else."},
+        ],
+        max_tokens=100,
+    )
+    print(f"   Content: {repr(response.choices[0].message.content)}")
+    print(f"   Finish reason: {response.choices[0].finish_reason}")
+    print(f"   Usage: {response.usage}")
+except Exception as e:
+    print(f"   ❌ Failed: {type(e).__name__}: {e}")
+
+# Test 3: No max_tokens limit
+print("\n--- Test 3: no max_tokens ---")
+try:
+    response = moonshot_client.chat.completions.create(
+        model="kimi-k2.5",
+        messages=[
+            {"role": "user", "content": "Say 'hello' and nothing else."},
+        ],
+    )
+    print(f"   Content: {repr(response.choices[0].message.content)}")
+    print(f"   Finish reason: {response.choices[0].finish_reason}")
+    print(f"   Usage: {response.usage}")
+except Exception as e:
+    print(f"   ❌ Failed: {type(e).__name__}: {e}")
