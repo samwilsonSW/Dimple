@@ -1,0 +1,61 @@
+Timestamp: 2026-05-27T15:06:23.011836
+Model: kimi-k2.5
+==================================================
+RAW RESPONSE:
+{
+  "answer": "Your driving is elite—9/10 based on the data. Over 5 measured tee shots, you’ve gained +2.40 strokes (+0.48 per drive) with 100% fairway accuracy. That per-drive SG rate is PGA Tour caliber (tour average is 0.00). Even your shorter drives (204–206 yards vs. 234–246) posted positive SG, suggesting either strategic layups on par-5s or fortunate positioning, but the result is the same: you’re giving yourself ideal angles into greens. Without written round reflections, I can’t gauge your subjective confidence, but objectively this is the strongest part of your game. The only caveat is the small sample size (5 shots), so continue tracking to confirm this isn’t variance.",
+  "confidence": 4,
+  "key_insights": [
+    "Tour-level SG: +0.48 per drive ranks in the 95th+ percentile for amateur play; you’re gaining nearly half a stroke per hole off the tee",
+    "Perfect accuracy: 5/5 fairways eliminates penalty strokes and recovery lies, preserving approach-shot advantage",
+    "Distance variance: 42-yard spread between shortest (204 yd) and longest (246 yd) drive—monitor whether this is strategic (layups) or contact-related"
+  ],
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "focus_area": "Driver accuracy maintenance",
+      "drill_name": "Fairway Gate Pressure Test",
+      "instructions": "Place two alignment sticks 12–15 yards apart on a range to simulate a narrow fairway. Hit 10 drivers through the gate. Score +1 for fairway, -2 for miss. Goal is 7/10 or better to match your current 100% baseline.",
+      "expected_outcome": "Reinforces the mechanical pattern producing your current accuracy; builds pressure-proof confidence for tournament play"
+    },
+    {
+      "priority": 2,
+      "focus_area": "Distance consistency (if shorter drives were unintentional)",
+      "drill_name": "Tempo-First Drivers",
+      "instructions": "If the 204-yard shots were mishits: alternate between 100% effort and 85% effort swings, tracking carry distance. Find the speed threshold where center-face contact maximizes distance; usually 90-95% effort yields longer carries than 100% for most players.",
+      "expected_outcome": "Eliminates the 40-yard drop-offs by optimizing smash factor; tightens dispersion to 235–250 yard window"
+    }
+  ]
+}
+
+PARSED JSON:
+{
+  "answer": "Your driving is elite\u20149/10 based on the data. Over 5 measured tee shots, you\u2019ve gained +2.40 strokes (+0.48 per drive) with 100% fairway accuracy. That per-drive SG rate is PGA Tour caliber (tour average is 0.00). Even your shorter drives (204\u2013206 yards vs. 234\u2013246) posted positive SG, suggesting either strategic layups on par-5s or fortunate positioning, but the result is the same: you\u2019re giving yourself ideal angles into greens. Without written round reflections, I can\u2019t gauge your subjective confidence, but objectively this is the strongest part of your game. The only caveat is the small sample size (5 shots), so continue tracking to confirm this isn\u2019t variance.",
+  "confidence": 4,
+  "key_insights": [
+    "Tour-level SG: +0.48 per drive ranks in the 95th+ percentile for amateur play; you\u2019re gaining nearly half a stroke per hole off the tee",
+    "Perfect accuracy: 5/5 fairways eliminates penalty strokes and recovery lies, preserving approach-shot advantage",
+    "Distance variance: 42-yard spread between shortest (204 yd) and longest (246 yd) drive\u2014monitor whether this is strategic (layups) or contact-related"
+  ],
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "focus_area": "Driver accuracy maintenance",
+      "drill_name": "Fairway Gate Pressure Test",
+      "instructions": "Place two alignment sticks 12\u201315 yards apart on a range to simulate a narrow fairway. Hit 10 drivers through the gate. Score +1 for fairway, -2 for miss. Goal is 7/10 or better to match your current 100% baseline.",
+      "expected_outcome": "Reinforces the mechanical pattern producing your current accuracy; builds pressure-proof confidence for tournament play"
+    },
+    {
+      "priority": 2,
+      "focus_area": "Distance consistency (if shorter drives were unintentional)",
+      "drill_name": "Tempo-First Drivers",
+      "instructions": "If the 204-yard shots were mishits: alternate between 100% effort and 85% effort swings, tracking carry distance. Find the speed threshold where center-face contact maximizes distance; usually 90-95% effort yields longer carries than 100% for most players.",
+      "expected_outcome": "Eliminates the 40-yard drop-offs by optimizing smash factor; tightens dispersion to 235\u2013250 yard window"
+    }
+  ]
+}
+
+USAGE / COST:
+  prompt_tokens:     488
+  completion_tokens: 2679
+  total_tokens:      3167

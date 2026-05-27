@@ -1,0 +1,61 @@
+Timestamp: 2026-05-27T15:03:34.319103
+Model: kimi-k2.5
+==================================================
+RAW RESPONSE:
+{
+  "answer": "Your driving is elite-tier based on this data. You're gaining +0.48 strokes per drive (+2.40 total across 5 shots), which exceeds Tour average and ranks in the top percentile for positional advantage. Critically, you've hit 100% of fairways (5/5) with machine-like consistency—every shot posted identical positive SG values, indicating repeatable mechanics under varying hole lengths (510-540 yards). While the sample size is small (n=5), the pattern is unambiguous: you're eliminating big numbers off the tee and putting yourself in play. The residual distance variance (206-246 yards remaining) suggests you're adapting trajectory or shape to hole demands while maintaining the fairway.",
+  "confidence": 4,
+  "key_insights": [
+    "Tour-level SG: +0.48 per drive indicates you're gaining nearly half a stroke against the field on every par-4 and par-5 tee shot",
+    "Perfect positional play: 100% fairway hit rate eliminates recovery penalties and maintains GIR opportunities",
+    "Zero variance in SG: Identical +0.48 values across all 5 shots suggest a controllable, repeatable delivery pattern rather than lucky outliers"
+  ],
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "focus_area": "Fairway maintenance under pressure",
+      "drill_name": "The 10-Ball Fairway Lock",
+      "instructions": "Set two alignment sticks 30 yards apart at your target distance (simulate fairway width). Hit 10 consecutive drivers. Score: 2 points for fairway, 0 for rough/miss. Goal: 16+ points (80% fairways) to validate your current 100% rate is sustainable under counting pressure.",
+      "expected_outcome": "Confirms your +0.48 SG accuracy holds under stress; if you maintain 80%+ here, your on-course 100% is sustainable"
+    },
+    {
+      "priority": 2,
+      "focus_area": "Distance audit",
+      "drill_name": "90% vs. 100% Speed Test",
+      "instructions": "On Trackman or range with targets: Hit 5 balls at 90% effort prioritizing center contact, then 5 at maximum 100% effort. Record carry distance and dispersion (fairway/rough). If 100% effort yields >12 yards average gain with <20% fairway accuracy loss, you can chase more distance. If accuracy drops >30%, maintain current 90% swing to preserve your +0.48 SG.",
+      "expected_outcome": "Quantifies whether distance gains are available without sacrificing your elite fairway hitting"
+    }
+  ]
+}
+
+PARSED JSON:
+{
+  "answer": "Your driving is elite-tier based on this data. You're gaining +0.48 strokes per drive (+2.40 total across 5 shots), which exceeds Tour average and ranks in the top percentile for positional advantage. Critically, you've hit 100% of fairways (5/5) with machine-like consistency\u2014every shot posted identical positive SG values, indicating repeatable mechanics under varying hole lengths (510-540 yards). While the sample size is small (n=5), the pattern is unambiguous: you're eliminating big numbers off the tee and putting yourself in play. The residual distance variance (206-246 yards remaining) suggests you're adapting trajectory or shape to hole demands while maintaining the fairway.",
+  "confidence": 4,
+  "key_insights": [
+    "Tour-level SG: +0.48 per drive indicates you're gaining nearly half a stroke against the field on every par-4 and par-5 tee shot",
+    "Perfect positional play: 100% fairway hit rate eliminates recovery penalties and maintains GIR opportunities",
+    "Zero variance in SG: Identical +0.48 values across all 5 shots suggest a controllable, repeatable delivery pattern rather than lucky outliers"
+  ],
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "focus_area": "Fairway maintenance under pressure",
+      "drill_name": "The 10-Ball Fairway Lock",
+      "instructions": "Set two alignment sticks 30 yards apart at your target distance (simulate fairway width). Hit 10 consecutive drivers. Score: 2 points for fairway, 0 for rough/miss. Goal: 16+ points (80% fairways) to validate your current 100% rate is sustainable under counting pressure.",
+      "expected_outcome": "Confirms your +0.48 SG accuracy holds under stress; if you maintain 80%+ here, your on-course 100% is sustainable"
+    },
+    {
+      "priority": 2,
+      "focus_area": "Distance audit",
+      "drill_name": "90% vs. 100% Speed Test",
+      "instructions": "On Trackman or range with targets: Hit 5 balls at 90% effort prioritizing center contact, then 5 at maximum 100% effort. Record carry distance and dispersion (fairway/rough). If 100% effort yields >12 yards average gain with <20% fairway accuracy loss, you can chase more distance. If accuracy drops >30%, maintain current 90% swing to preserve your +0.48 SG.",
+      "expected_outcome": "Quantifies whether distance gains are available without sacrificing your elite fairway hitting"
+    }
+  ]
+}
+
+USAGE / COST:
+  prompt_tokens:     488
+  completion_tokens: 2203
+  total_tokens:      2691

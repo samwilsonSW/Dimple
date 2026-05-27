@@ -1,0 +1,38 @@
+Timestamp: 2026-05-27T15:04:42.204813
+Model: kimi-k2.5
+==================================================
+RAW RESPONSE:
+{"answer":"Your driving is performing at an elite, potentially Tour-caliber level. Over 5 tracked tee shots, you are gaining +0.48 strokes per drive (+2.40 total), which significantly outperforms the scratch baseline. You have hit 100% of fairways in this sample with remarkable consistency—every single drive registered the exact same SG value, indicating highly repeatable mechanics and mental routine. Your effective distances (204–246 yards) show strategic adaptability across varying hole lengths (510–540 yards), while maintaining elite value. Without qualitative round reflections, this assessment is purely data-driven, but the metrics suggest your driver is a major competitive weapon. Do not overhaul your technique; focus on maintenance and pressure-proofing this strength.","confidence":4,"key_insights":["Elite SG performance: +0.48 per drive is in the top percentile of amateur and professional play","Perfect accuracy: 100% fairway hit rate with zero penalty strokes from tee shots","Mechanical consistency: Identical SG values across all five drives indicate a repeatable, reliable swing pattern","Strategic distance management: Effective distance control ranging from 204–246 yards suggests smart layup decisions on longer holes"],"drill_recommendations":[{"priority":1,"focus_area":"Driver pressure testing","drill_name":"Fairway Gauntlet","instructions":"Place an alignment stick on your target line. Hit 10 drivers with the intent of finding the fairway. Score each shot: Green (fairway), Yellow (semi-rough within 5 yards), or Red (miss). To pass, you must hit 8/10 greens. Perform this drill before competitive rounds to validate your elite accuracy under simulated pressure.","expected_outcome":"Maintain >80% fairway rate with neutral or positive SG to preserve your statistical advantage off the tee"},{"priority":2,"focus_area":"Distance control calibration","drill_name":"Three-Zone Driving","instructions":"On the range, place targets or flags at three specific carry distances (e.g., 230, 245, and 260 yards). Hit 3 balls to each target, attempting to land each ball within a 15-yard radius of the target. Track your dispersion pattern. Focus on tempo rather than maximum effort to replicate your on-course consistency.","expected_outcome":"Tight dispersion (<25 yards lateral) and ability to vary distance intentionally by 10-15 yards for strategic course management on par-5s"}]}
+
+PARSED JSON:
+{
+  "answer": "Your driving is performing at an elite, potentially Tour-caliber level. Over 5 tracked tee shots, you are gaining +0.48 strokes per drive (+2.40 total), which significantly outperforms the scratch baseline. You have hit 100% of fairways in this sample with remarkable consistency\u2014every single drive registered the exact same SG value, indicating highly repeatable mechanics and mental routine. Your effective distances (204\u2013246 yards) show strategic adaptability across varying hole lengths (510\u2013540 yards), while maintaining elite value. Without qualitative round reflections, this assessment is purely data-driven, but the metrics suggest your driver is a major competitive weapon. Do not overhaul your technique; focus on maintenance and pressure-proofing this strength.",
+  "confidence": 4,
+  "key_insights": [
+    "Elite SG performance: +0.48 per drive is in the top percentile of amateur and professional play",
+    "Perfect accuracy: 100% fairway hit rate with zero penalty strokes from tee shots",
+    "Mechanical consistency: Identical SG values across all five drives indicate a repeatable, reliable swing pattern",
+    "Strategic distance management: Effective distance control ranging from 204\u2013246 yards suggests smart layup decisions on longer holes"
+  ],
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "focus_area": "Driver pressure testing",
+      "drill_name": "Fairway Gauntlet",
+      "instructions": "Place an alignment stick on your target line. Hit 10 drivers with the intent of finding the fairway. Score each shot: Green (fairway), Yellow (semi-rough within 5 yards), or Red (miss). To pass, you must hit 8/10 greens. Perform this drill before competitive rounds to validate your elite accuracy under simulated pressure.",
+      "expected_outcome": "Maintain >80% fairway rate with neutral or positive SG to preserve your statistical advantage off the tee"
+    },
+    {
+      "priority": 2,
+      "focus_area": "Distance control calibration",
+      "drill_name": "Three-Zone Driving",
+      "instructions": "On the range, place targets or flags at three specific carry distances (e.g., 230, 245, and 260 yards). Hit 3 balls to each target, attempting to land each ball within a 15-yard radius of the target. Track your dispersion pattern. Focus on tempo rather than maximum effort to replicate your on-course consistency.",
+      "expected_outcome": "Tight dispersion (<25 yards lateral) and ability to vary distance intentionally by 10-15 yards for strategic course management on par-5s"
+    }
+  ]
+}
+
+USAGE / COST:
+  prompt_tokens:     488
+  completion_tokens: 2426
+  total_tokens:      2914
