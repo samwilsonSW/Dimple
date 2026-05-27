@@ -89,5 +89,15 @@ yarn-error.log*
 *.key
 *.crt
 
+# ─── Test Data / Generated Files ───
+data/llm_responses/
+data/prompts/
+data/test_results/
+data/*.jsonl
+data/rounds/*.json
+*.jsonl
+my_round*.json
+15hcp_testround*.json
+
 # ─── OS ───
 Thumbs.db
