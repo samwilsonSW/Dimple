@@ -175,7 +175,10 @@ def generate_reflection(round_data: Dict[str, Any], temperature: float = 1.0) ->
                 {"role": "user", "content": full_prompt},
             ],
             temperature=temperature,
-            max_tokens=200,
+            # NOTE: kimi-k2.5 is a thinking model. max_tokens includes reasoning
+            # tokens, so a low limit produces empty output. 1000 gives room for
+            # ~100-200 reasoning tokens + ~200 output tokens.
+            max_tokens=1000,
         )
 
         content = response.choices[0].message.content
