@@ -8,14 +8,17 @@ from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel,
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
 from app.services.llm import generate_coach_response, generate_structured_coach_response
+from app.routers import courses
 
 settings = get_settings()
 
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="0.5.0",
+    version="0.6.0",
 )
+
+app.include_router(courses.router)
 
 app.add_middleware(
     CORSMiddleware,
