@@ -17,8 +17,11 @@ API_BASE = "https://api.golfcourseapi.com/v1"
 
 def _get_headers() -> Dict[str, str]:
     settings = get_settings()
+    key = settings.golfcourseapi_key
+    if not key:
+        raise RuntimeError("GOLFCOURSEAPI_KEY not set. Add it to backend/.env or disable course search.")
     return {
-        "Authorization": f"Key {settings.golfcourseapi_key}",
+        "Authorization": f"Key {key}",
         "Content-Type": "application/json",
     }
 
