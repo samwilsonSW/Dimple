@@ -9,8 +9,9 @@
 ## Active
 
 ### Backend (Kanary)
-- [ ] **Scorecard API** — `POST /api/v1/rounds` already accepts `hole_data`, but no aggregation logic yet. Need to calculate totals, GIR%, fairway% from simple scorecard.
-- [ ] **Round History endpoint** — `GET /api/v1/rounds?user_id={uuid}` — list all rounds for a player with summary stats.
+- [x] **Scorecard stats calculation** — `POST /api/v1/rounds` now auto-calculates SG Putting, SG Approach, GIR%, Fairway% from `hole_data`. Stores in `round_stats` table.
+- [x] **Round History endpoint** — `GET /api/v1/rounds?user_id={uuid}` — returns rounds with embedded `round_stats`.
+- [ ] **Coach prompt refinement** — Trend-based coaching using `round_stats` is implemented but needs testing. May need iteration on prompt quality.
 - [ ] **Voice memo placeholder** — schema support for `voice_memo_url` in `rounds` table (future parsing).
 
 ### Frontend (Claude Code)
@@ -20,7 +21,14 @@
   - **Rules:** Lowercase UUIDs for `user_id`. Handle empty states and API errors gracefully.
   - **Test:** Search "Pinehurst", select No. 2, pick Blue tees, verify `course_id` flows to round payload.
 - [ ] **[CC] Scorecard Entry View** — Per-hole input: score, putts, fairway (toggle), GIR (toggle). Par 3 holes hide fairway toggle. Submit as `POST /api/v1/rounds` with `hole_data` array.
-- [ ] **[CC] Round History List** — Display past rounds with course name, date, total score. Tap to view detail (future).
+  - **Endpoint:** `POST /api/v1/rounds` with `hole_data` array
+  - **Response includes:** `round_stats` with SG Putting, SG Approach, GIR%, Fairway%
+  - **Rules:** Each hole needs `hole_number`, `par`, `score`, `putts`, `fairway` (bool, null for par 3), `gir` (bool)
+  - **Test:** Enter 18 holes, verify response shows `round_stats` with calculated values
+- [ ] **[CC] Round History List** — Display past rounds with course name, date, total score, key stats.
+  - **Endpoint:** `GET /api/v1/rounds?user_id={uuid}&limit=10`
+  - **Display:** Course name, date, total score, GIR%, Fairway%, Putts
+  - **Test:** After entering rounds, verify list populates with stats from `round_stats`
 
 ---
 
@@ -35,7 +43,7 @@
 
 ## Blocked
 
-- Voice memo parsing — waiting on: Duk to test flow (do we record in-app or attach existing?)
+- Voice memo parsing — **CANCELLED per Duk taste call.** Simple scorecard + optional typed reflection is the path. Voice memos feel weird post-round.
 - Quick round mode (just total score + reflection) — waiting on: Duk taste call
 
 ---

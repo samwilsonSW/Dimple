@@ -119,9 +119,25 @@ POST /api/v1/rounds
   "shots_with_sg": 82,
   "handicap_index": 13.2,
   "reflection_saved": true,
-  "status": "success"
+  "status": "success",
+  "round_stats": {
+    "total_score": 85,
+    "total_putts": 32,
+    "gir_count": 5,
+    "gir_percentage": 0.278,
+    "fairways_hit": 7,
+    "fairways_possible": 14,
+    "fairway_percentage": 0.5,
+    "sg_putting": -1.2,
+    "sg_approach": -2.5,
+    "strokes_over_under": 8.5,
+    "avg_putts_per_hole": 1.78,
+    "avg_score_to_par": 4.72
+  }
 }
 ```
+
+**Note:** `round_stats` only present when `hole_data` provided. Calculated using Mark Broadie's Strokes Gained methodology with handicap-adjusted baselines.
 
 **Errors:**
 - `500` — Supabase insert failed or embedding failure
@@ -179,6 +195,7 @@ POST /api/v1/coach/ask
   - Answer focuses on: consistent contact, basic chipping, two-putting
   - Confidence: 5
   - Drills: 7-Iron Consistency, Chip-and-Putt
+- **Trend-based coaching:** Coach now prioritizes recent `round_stats` over individual shot retrieval when `hole_data` is available. Response includes trend insights like "Your SG Putting is -1.2 over last 3 rounds."
 
 **Errors:**
 - `500` — Embedding failure
@@ -306,6 +323,45 @@ GET /api/v1/courses/{course_id}
 - `source` is `"cache"` if from Supabase, `"api"` if fetched live and cached.
 - `tee_data` includes both `male` and `female` tees from the API. The `gender` field distinguishes them.
 - `handicap` on holes is the hole handicap (1-18) for stroke allocation, not player handicap.
+
+---
+
+### Round History
+
+```
+GET /api/v1/rounds?user_id={uuid}&limit={limit}
+```
+
+**Query Parameters:**
+- `user_id` (required): Lowercase UUID
+- `limit` (optional, default 10): Max rounds to return
+
+**Response:**
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "count": 2,
+  "rounds": [
+    {
+      "id": 123,
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "round_date": "2026-06-15",
+      "course": {"name": "Rawls Course", "city": "Lubbock", "state": "TX"},
+      "handicap_index": 13.2,
+      "reflection": "Driver was wild today",
+      "round_stats": {
+        "total_score": 85,
+        "gir_percentage": 0.278,
+        "fairway_percentage": 0.5,
+        "sg_putting": -1.2,
+        "sg_approach": -2.5
+      }
+    }
+  ]
+}
+```
+
+**Note:** `round_stats` embedded in each round object.
 
 ---
 
