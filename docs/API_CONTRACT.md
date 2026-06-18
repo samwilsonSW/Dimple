@@ -199,16 +199,25 @@ GET /api/v1/courses/search?q={query}&limit={limit}
 **Response:**
 ```json
 {
-  "query": "Pinehurst",
+  "query": "Rawls",
   "count": 3,
   "courses": [
     {
-      "id": "pinehurst-no-2",
-      "name": "Pinehurst No. 2",
-      "club_name": "Pinehurst Resort",
-      "city": "Pinehurst",
-      "state": "NC",
-      "country": "USA",
+      "id": "21027",
+      "name": "The Rawls Course At Texas Tech",
+      "club_name": "The Rawls Course At Texas Tech",
+      "city": "Lubbock",
+      "state": "TX",
+      "country": "United States",
+      "holes_count": 18
+    },
+    {
+      "id": "24982",
+      "name": "Club At Rawls Creek, The",
+      "club_name": "Club At Rawls Creek, The",
+      "city": "Columbia",
+      "state": "SC",
+      "country": "United States",
       "holes_count": 18
     }
   ]
@@ -228,36 +237,75 @@ GET /api/v1/courses/{course_id}
 **Response:**
 ```json
 {
-  "source": "cache",
+  "source": "api",
   "course": {
-    "external_id": "pinehurst-no-2",
-    "name": "Pinehurst No. 2",
-    "club_name": "Pinehurst Resort",
-    "city": "Pinehurst",
-    "state": "NC",
-    "country": "USA",
+    "id": "21027",
+    "name": "The Rawls Course At Texas Tech",
+    "club_name": "The Rawls Course At Texas Tech",
+    "city": "Lubbock",
+    "state": "TX",
+    "country": "United States",
     "holes_count": 18,
     "tee_data": [
       {
-        "name": "Blue",
-        "rating": 74.9,
-        "slope": 134,
-        "total_yards": 7524
+        "tee_id": "female_black",
+        "tee_name": "Black",
+        "gender": "female",
+        "length": 7307,
+        "par": 72,
+        "slope": 148,
+        "rating": 81.3
+      },
+      {
+        "tee_id": "female_red",
+        "tee_name": "Red",
+        "gender": "female",
+        "length": 6825,
+        "par": 72,
+        "slope": 142,
+        "rating": 78.6
+      },
+      {
+        "tee_id": "female_white",
+        "tee_name": "White",
+        "gender": "female",
+        "length": 6270,
+        "par": 72,
+        "slope": 136,
+        "rating": 75.5
+      },
+      {
+        "tee_id": "female_gold",
+        "tee_name": "Gold",
+        "gender": "female",
+        "length": 5493,
+        "par": 72,
+        "slope": 115,
+        "rating": 70.5
       }
     ],
     "hole_data": [
       {
         "hole_number": 1,
         "par": 4,
-        "yardage": 402,
-        "handicap": 8
+        "yardage": 368,
+        "handicap": 10
+      },
+      {
+        "hole_number": 2,
+        "par": 5,
+        "yardage": 521,
+        "handicap": 18
       }
     ]
   }
 }
 ```
 
-**Note:** `source` is `"cache"` if from Supabase, `"api"` if fetched live and cached.
+**Notes:**
+- `source` is `"cache"` if from Supabase, `"api"` if fetched live and cached.
+- `tee_data` includes both `male` and `female` tees from the API. The `gender` field distinguishes them.
+- `handicap` on holes is the hole handicap (1-18) for stroke allocation, not player handicap.
 
 ---
 
