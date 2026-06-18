@@ -99,5 +99,12 @@ data/rounds/*.json
 my_round*.json
 15hcp_testround*.json
 
+# ─── Xcode (per-user state) ───
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+DerivedData/
+
 # ─── OS ───
 Thumbs.db
