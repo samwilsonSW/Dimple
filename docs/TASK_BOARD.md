@@ -14,21 +14,43 @@
 - [ ] **Coach prompt refinement** — Trend-based coaching using `round_stats` is implemented but needs testing. May need iteration on prompt quality.
 - [ ] **Voice memo placeholder** — schema support for `voice_memo_url` in `rounds` table (future parsing).
 
-### Frontend (Claude Code)
-- [ ] **[CC] Course Search UI** — Build SwiftUI view per API_CONTRACT.md §Course Search. 
-  - **Endpoint:** `GET /api/v1/courses/search?q={query}&limit=10`
-  - **Flow:** Search bar → results list (course name, city, state) → tap to select → tee box picker (from `/api/v1/courses/{course_id}`) → pass `course_id` + selected tee to round creation
-  - **Rules:** Lowercase UUIDs for `user_id`. Handle empty states and API errors gracefully.
-  - **Test:** Search "Pinehurst", select No. 2, pick Blue tees, verify `course_id` flows to round payload.
-- [ ] **[CC] Scorecard Entry View** — Per-hole input: score, putts, fairway (toggle), GIR (toggle). Par 3 holes hide fairway toggle. Submit as `POST /api/v1/rounds` with `hole_data` array.
-  - **Endpoint:** `POST /api/v1/rounds` with `hole_data` array
-  - **Response includes:** `round_stats` with SG Putting, SG Approach, GIR%, Fairway%
-  - **Rules:** Each hole needs `hole_number`, `par`, `score`, `putts`, `fairway` (bool, null for par 3), `gir` (bool)
-  - **Test:** Enter 18 holes, verify response shows `round_stats` with calculated values
-- [ ] **[CC] Round History List** — Display past rounds with course name, date, total score, key stats.
-  - **Endpoint:** `GET /api/v1/rounds?user_id={uuid}&limit=10`
-  - **Display:** Course name, date, total score, GIR%, Fairway%, Putts
-  - **Test:** After entering rounds, verify list populates with stats from `round_stats`
+### Frontend (Claude Code) — Priority Order
+
+**1. [CC] Course Search UI**
+- **Endpoint:** `GET /api/v1/courses/search?q={query}&limit=10`
+- **Flow:** Search bar → results list (course name, city, state) → tap to select → tee box picker (from `/api/v1/courses/{course_id}`) → pass `course_id` + selected tee to round creation
+- **Rules:** Lowercase UUIDs for `user_id`. Handle empty states and API errors gracefully.
+- **Test:** Search "Rawls", select "The Rawls Course At Texas Tech", pick Blue tees, verify `course_id` flows to round payload.
+- **Blocks:** Scorecard Entry View (needs course_id and hole_data)
+
+**2. [CC] Scorecard Entry View**
+- **Endpoint:** `POST /api/v1/rounds` with `hole_data` array
+- **Flow:** Receive course_id + tee selection → load hole_data template (par, yardage from course details) → per-hole input: score, putts, fairway (toggle, hidden on par 3), GIR (toggle) → submit → display round_stats response
+- **Response includes:** `round_stats` with SG Putting, SG Approach, GIR%, Fairway%
+- **Rules:** Each hole needs `hole_number`, `par`, `score`, `putts`, `fairway` (bool, null for par 3), `gir` (bool)
+- **Test:** Enter 18 holes for Rawls Course, verify response shows `round_stats` with calculated values
+- **Blocks:** Round History List (needs rounds to exist)
+
+**3. [CC] Round History List**
+- **Endpoint:** `GET /api/v1/rounds?user_id={uuid}&limit=10`
+- **Flow:** Display past rounds with course name, date, total score, key stats → tap to view detail (future)
+- **Display:** Course name, date, total score, GIR%, Fairway%, Putts
+- **Test:** After entering rounds, verify list populates with stats from `round_stats`
+
+---
+
+## Merge Criteria (to main)
+
+**Goal:** Course search + tee selection + scorecard input working end-to-end.
+
+**Required:**
+- [ ] [CC] Course Search UI — search, select, pick tee
+- [ ] [CC] Scorecard Entry View — 18 holes, submit, get stats back
+- [ ] [CC] Round History List — shows past rounds with stats
+- [ ] Kanary: Verify backend handles all frontend calls correctly
+- [ ] Duk: Test on device, confirm flow feels right
+
+**Then:** Merge Kanary → main, rewrite README.md to reflect working features.
 
 ---
 
@@ -38,6 +60,8 @@
 - [x] Course search backend
 - [x] AI Coach endpoint
 - [x] RAG retrieval with reflections
+- [x] Scorecard stats calculation (SG Putting, SG Approach, GIR%, Fairway%)
+- [x] Round history endpoint
 
 ---
 
