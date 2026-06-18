@@ -14,7 +14,11 @@
 - [ ] **Voice memo placeholder** — schema support for `voice_memo_url` in `rounds` table (future parsing).
 
 ### Frontend (Claude Code)
-- [ ] **[CC] Course Search UI** — Build SwiftUI view per API_CONTRACT.md §Course Search. Endpoint: `GET /api/v1/courses/search?q={query}&limit=10`. Display results list, tee selector. On select, pass `course_id` to round creation.
+- [ ] **[CC] Course Search UI** — Build SwiftUI view per API_CONTRACT.md §Course Search. 
+  - **Endpoint:** `GET /api/v1/courses/search?q={query}&limit=10`
+  - **Flow:** Search bar → results list (course name, city, state) → tap to select → tee box picker (from `/api/v1/courses/{course_id}`) → pass `course_id` + selected tee to round creation
+  - **Rules:** Lowercase UUIDs for `user_id`. Handle empty states and API errors gracefully.
+  - **Test:** Search "Pinehurst", select No. 2, pick Blue tees, verify `course_id` flows to round payload.
 - [ ] **[CC] Scorecard Entry View** — Per-hole input: score, putts, fairway (toggle), GIR (toggle). Par 3 holes hide fairway toggle. Submit as `POST /api/v1/rounds` with `hole_data` array.
 - [ ] **[CC] Round History List** — Display past rounds with course name, date, total score. Tap to view detail (future).
 
