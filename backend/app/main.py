@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 
 from app.core.config import get_settings
 from app.core.baselines import get_baseline_for_handicap
+from app.core.scorecard_stats import calculate_round_stats
 from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel, DrillRecommendation, LIE_CODES, CLUB_CODES
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
@@ -214,7 +215,28 @@ def ingest_round(payload: RoundPayload):
 
     shots_with_sg = sum(1 for r in embeddings_rows if r.get("sg_value") is not None)
 
-    return {
+    # Calculate scorecard stats if hole_data provided
+    round_stats = None
+    if payload.hole_data:
+        try:
+            stats = calculate_round_stats(
+                hole_data=payload.hole_data,
+                handicap=payload.handicap_index,
+                course_rating=payload.tee_box.rating if payload.tee_box else None,
+                course_slope=payload.tee_box.slope if payload.tee_box else None,
+            )
+            stats_row = {
+                "round_id": round_id,
+                "user_id": payload.user_id,
+                **stats,
+            }
+            supabase.table("round_stats").insert(stats_row).execute()
+            round_stats = stats
+        except Exception as e:
+            # Don't fail ingestion if stats calc fails
+            print(f"Warning: Failed to calculate round stats: {e}")
+
+    response = {
         "round_id": round_id,
         "shots_ingested": len(embeddings_rows),
         "shots_with_sg": shots_with_sg,
@@ -222,6 +244,10 @@ def ingest_round(payload: RoundPayload):
         "reflection_saved": payload.reflection is not None,
         "status": "success",
     }
+    if round_stats:
+        response["round_stats"] = round_stats
+    
+    return response
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -366,15 +392,42 @@ def coach_ask(query: CoachQuery):
         "Ground every insight in the provided context. If you don't have enough data, say so."
     )
 
+    # Retrieve recent round stats for trend-based coaching
+    try:
+        stats_result = supabase.table("round_stats").select("*").eq("user_id", query.user_id).order("created_at", desc=True).limit(5).execute()
+        recent_stats = stats_result.data or []
+    except Exception:
+        recent_stats = []
+
+    stats_text = ""
+    if recent_stats:
+        stats_lines = ["Recent Round Stats (last " + str(len(recent_stats)) + " rounds):"]
+        for i, s in enumerate(recent_stats[:3], 1):
+            stats_lines.append(
+                f"Round {i}: Score {s['total_score']}, GIR {s['gir_percentage']:.0%}, "
+                f"Fairway {s['fairway_percentage']:.0%}, Putts {s['total_putts']}, "
+                f"SG Putting {s['sg_putting']:+.1f}, SG Approach {s['sg_approach']:+.1f}"
+            )
+        stats_text = "\n".join(stats_lines)
+
     user_prompt_parts = [
         f"Player Question: {query.question}",
         "",
+    ]
+
+    if stats_text:
+        user_prompt_parts.extend([
+            stats_text,
+            "",
+        ])
+
+    user_prompt_parts.extend([
         "Strokes Gained Summary (from retrieved shots):",
         sg_summary,
         "",
         "Relevant Shot History:",
         context_text,
-    ]
+    ])
 
     if reflection_text:
         user_prompt_parts.extend([
@@ -385,8 +438,8 @@ def coach_ask(query: CoachQuery):
 
     user_prompt_parts.extend([
         "",
-        "Based on the shot history, SG summary, and any player reflections above, provide a helpful coaching response. "
-        "Connect the quantitative data (SG) with the qualitative observations (reflections) when both are available."
+        "Based on the round stats, shot history, SG summary, and any player reflections above, provide a helpful coaching response. "
+        "Prioritize trend-based insights from the round stats when available. Connect quantitative data with qualitative observations."
     ])
 
     user_prompt = "\n".join(user_prompt_parts)
@@ -415,3 +468,27 @@ def coach_ask(query: CoachQuery):
         drill_recommendations=drills,
         context=similar_shots,
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ROUND HISTORY ENDPOINT
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/v1/rounds")
+def get_rounds(user_id: str, limit: int = 10):
+    """
+    Retrieve round history with stats for a player.
+    """
+    supabase = get_supabase()
+    
+    try:
+        result = supabase.table("rounds").select("*, round_stats(*)").eq("user_id", user_id).order("round_date", desc=True).limit(limit).execute()
+        rounds = result.data or []
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch rounds: {str(e)}")
+    
+    return {
+        "user_id": user_id,
+        "count": len(rounds),
+        "rounds": rounds,
+    }
