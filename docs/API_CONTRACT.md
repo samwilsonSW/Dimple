@@ -226,7 +226,7 @@ GET /api/v1/courses/search?q={query}&limit={limit}
       "city": "Lubbock",
       "state": "TX",
       "country": "United States",
-      "holes_count": 18
+      "holes": 18
     },
     {
       "id": "24982",
@@ -235,7 +235,7 @@ GET /api/v1/courses/search?q={query}&limit={limit}
       "city": "Columbia",
       "state": "SC",
       "country": "United States",
-      "holes_count": 18
+      "holes": 18
     }
   ]
 }
@@ -262,8 +262,8 @@ GET /api/v1/courses/{course_id}
     "city": "Lubbock",
     "state": "TX",
     "country": "United States",
-    "holes_count": 18,
-    "tee_data": [
+    "holes": 18,
+    "tees": [
       {
         "tee_id": "female_black",
         "tee_name": "Black",
@@ -301,7 +301,7 @@ GET /api/v1/courses/{course_id}
         "rating": 70.5
       }
     ],
-    "hole_data": [
+    "holes": [
       {
         "hole_number": 1,
         "par": 4,
@@ -321,7 +321,7 @@ GET /api/v1/courses/{course_id}
 
 **Notes:**
 - `source` is `"cache"` if from Supabase, `"api"` if fetched live and cached.
-- `tee_data` includes both `male` and `female` tees from the API. The `gender` field distinguishes them.
+- `tees` includes both `male` and `female` tees from the API. The `gender` field distinguishes them.
 - `handicap` on holes is the hole handicap (1-18) for stroke allocation, not player handicap.
 
 ---
