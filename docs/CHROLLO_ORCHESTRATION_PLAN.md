@@ -71,6 +71,9 @@ Kanary's unprompted pings are what make Duk an orchestrator instead of a poller 
 ### Kanary → Claude Code
 - "Build SwiftUI view for course search per the contract. Endpoint, request, and response shape are pinned there."
 
+### Claude Code → AGENT_STATUS.md
+- Update as you work: progress, blockers, questions for Duk. Kanary reads this. No more "what's Claude Code doing?"
+
 ### Claude Code → Duk
 - Working build on device. "Try this — tap course search, type 'Pinehurst'."
 
@@ -84,6 +87,7 @@ Kanary's unprompted pings are what make Duk an orchestrator instead of a poller 
 ### Source of truth
 - **API_CONTRACT.md** — the seam, owned by Kanary. Pins request/response shapes *and* the rules a human keeps forgetting (e.g. **UUIDs are lowercase**; case-sensitive `match_shots`).
 - **TASK_BOARD.md** — what's in progress and who owns it.
+- **AGENT_STATUS.md** — Claude Code's real-time heartbeat. Progress, blockers, questions. Kanary reads this to track frontend state without polling Duk.
 
 ### Branching
 - **`Kanary` is the single integration branch for now** — both frontend and backend land here. (The old "frontend→`main`, backend→`Kanary`" split is dropped; layer-split long-lived branches diverge, and the contract spans both.)
@@ -151,6 +155,7 @@ The enablers, in leverage order:
 |------|---------|-------|
 | `API_CONTRACT.md` | Backend ↔ Frontend interface (incl. casing rules) | Kanary |
 | `TASK_BOARD.md` | What's in progress | Kanary |
+| `AGENT_STATUS.md` | Claude Code's real-time status — progress, blockers, questions | Claude Code (writes), Kanary (reads) |
 | `AGENT_REGISTRY.md` | Who does what | Kanary |
 | `backend/` | FastAPI server | Kanary |
 | `frontend/` | SwiftUI app | Claude Code |

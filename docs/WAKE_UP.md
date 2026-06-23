@@ -36,6 +36,7 @@
 | `docs/API_CONTRACT.md` | The score. Endpoint shapes, schemas, global rules. **Read before building.** |
 | `docs/TASK_BOARD.md` | Who's doing what. Pick up `[CC]` tasks if you're Claude Code. |
 | `docs/CHROLLO_ORCHESTRATION_PLAN.md` | How we work together. Authority, communication protocol, interrupt thresholds. |
+| `docs/AGENT_STATUS.md` | **Claude Code's heartbeat.** Update as you work. Kanary reads this to track your state. |
 | `README.md` | Project overview, stack, setup instructions. |
 
 ---
@@ -61,6 +62,7 @@
 - Read this, then API_CONTRACT.md, then TASK_BOARD.md
 - Pick up `[CC]` tasks
 - Build against the contract — shapes are pinned there
+- **Update `AGENT_STATUS.md` as you work** — progress, blockers, questions for Duk
 - Report completion to Duk
 
 **If you're Duk:**

@@ -1,7 +1,7 @@
 # Dimple Task Board
 
 > **Owner:** Kanary (OpenClaw)  
-> **Updated:** 2026-06-18  
+> **Updated:** 2026-06-23  
 > **Rule:** Claude Code reads this file, picks up tasks marked `[CC]`, and reports completion to Duk. Kanary never assigns tasks to Duk directly — only surfaces blockers that need taste.
 
 ---
@@ -76,10 +76,11 @@
 
 1. Read `API_CONTRACT.md` for endpoint shapes and rules
 2. Pick up `[CC]` tasks from this board
-3. Build in SwiftUI, test on device
-4. When done, tell Duk: "Task X complete, ready for review"
-5. Duk tests, gives taste feedback, or says "ship it"
-6. If changes needed, Duk tells Kanary → Kanary updates task or files new one
+3. **Update `AGENT_STATUS.md` as you work** — progress, blockers, questions. Kanary reads this.
+4. Build in SwiftUI, test on device
+5. When done, tell Duk: "Task X complete, ready for review"
+6. Duk tests, gives taste feedback, or says "ship it"
+7. If changes needed, Duk tells Kanary → Kanary updates task or files new one
 
 ---
 
