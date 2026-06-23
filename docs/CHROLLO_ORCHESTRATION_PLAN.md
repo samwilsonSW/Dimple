@@ -100,10 +100,10 @@ Kanary's unprompted pings are what make Duk an orchestrator instead of a poller 
 
 | Feature | Backend | Frontend | Status |
 |---------|---------|----------|--------|
-| Course Search | ✅ | 🔄 | API live, needs SwiftUI |
-| Scorecard Entry | ✅ Schema | ❌ | Not started |
-| Voice Memo | ❌ | ❌ | Not started |
-| Round History | ✅ | ❌ | Not started |
+| Course Search | ✅ | ✅ | Complete — search, select, tee picker working |
+| Scorecard Entry | ✅ Schema | 🔄 | Next up — Claude Code building now |
+| Voice Memo | ❌ | ❌ | Cancelled per Duk taste |
+| Round History | ✅ | ❌ | Blocked on scorecard entry |
 | AI Coach | ✅ | ✅ | Working (frontend now sends authenticated, lowercased `user_id`) |
 
 **Open risks to track:** LLM thinking-mode latency vs the iOS ~60s request timeout; `match_shots` is case-sensitive on `user_id`.

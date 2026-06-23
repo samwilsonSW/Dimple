@@ -16,14 +16,14 @@
 
 ### Frontend (Claude Code) — Priority Order
 
-**1. [CC] Course Search UI**
+**1. [CC] Course Search UI** ✅ COMPLETE
 - **Endpoint:** `GET /api/v1/courses/search?q={query}&limit=10`
 - **Flow:** Search bar → results list (course name, city, state) → tap to select → tee box picker (from `/api/v1/courses/{course_id}`) → pass `course_id` + selected tee to round creation
 - **Rules:** Lowercase UUIDs for `user_id`. Handle empty states and API errors gracefully.
 - **Test:** Search "Rawls", select "The Rawls Course At Texas Tech", pick Black/Red/White/Gold tees, verify `course_id` flows to round payload.
-- **Blocks:** Scorecard Entry View (needs course_id and hole_data)
+- **Status:** Merged to Kanary branch 2026-06-22. Files: `CourseSearchView.swift`, `CourseService.swift`, `CourseModels.swift`
 
-**2. [CC] Scorecard Entry View**
+**2. [CC] Scorecard Entry View** — ACTIVE
 - **Endpoint:** `POST /api/v1/rounds` with `hole_data` array
 - **Flow:** Receive course_id + tee selection → load hole_data template (par, yardage from course details) → per-hole input: score, putts, fairway (toggle, hidden on par 3), GIR (toggle) → submit → display round_stats response
 - **Response includes:** `round_stats` with SG Putting, SG Approach, GIR%, Fairway%

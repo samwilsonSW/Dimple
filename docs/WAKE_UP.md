@@ -8,7 +8,7 @@
 
 ## Current Status (Auto-Updated)
 
-**Last Updated:** 2026-06-18  
+**Last Updated:** 2026-06-23  
 **API Version:** 0.6.0  
 **Branch:** Kanary (integration branch for both frontend and backend)
 
@@ -19,8 +19,9 @@
 - ✅ Vector search (local embeddings + Supabase pgvector)
 
 ### What's In Progress
-- 🔄 Scorecard aggregation backend (Kanary)
-- 🔄 Course search SwiftUI (Claude Code)
+- 🔄 Scorecard Entry View (Claude Code) — next priority
+- 🔄 Round History List (Claude Code) — blocked on scorecard
+- 🔄 Scorecard aggregation backend refinement (Kanary)
 
 ### What's Blocked
 - Voice memo flow — waiting on Duk taste decision
