@@ -9,9 +9,20 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        NavigationStack {
-            CoachView()
+        TabView {
+            NavigationStack {
+                CoachView()
+            }
+            .tabItem {
+                Label("Coach", systemImage: "bubble.left.and.text.bubble.right")
+            }
+
+            NewRoundView()
+                .tabItem {
+                    Label("New Round", systemImage: "flag.fill")
+                }
         }
+        .tint(.forestGreen)
     }
 }
 
