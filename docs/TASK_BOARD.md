@@ -24,12 +24,23 @@
 - **Status:** Merged to Kanary branch 2026-06-22. Files: `CourseSearchView.swift`, `CourseService.swift`, `CourseModels.swift`
 
 **2. [CC] Scorecard Entry View** — ACTIVE
+- **Spec:** `docs/SCORECARD_ENTRY_SPEC.md` — read this first. All taste decisions documented.
 - **Endpoint:** `POST /api/v1/rounds` with `hole_data` array
-- **Flow:** Receive course_id + tee selection → load hole_data template (par, yardage from course details) → per-hole input: score, putts, fairway (toggle, hidden on par 3), GIR (toggle) → submit → display round_stats response
+- **Flow:** Per-hole entry (post-hole, at next tee box) → stepper starting at par → auto-advance with manual override → all 4 fields per hole (score, putts, fairway, GIR) → draft auto-saves locally → review screen → submit → display round_stats response
 - **Response includes:** `round_stats` with SG Putting, SG Approach, GIR%, Fairway%
 - **Rules:** Each hole needs `hole_number`, `par`, `score`, `putts`, `fairway` (bool, null for par 3), `gir` (bool)
-- **Test:** Enter 18 holes for Rawls Course, verify response shows `round_stats` with calculated values
+- **Test:** Enter 18 holes for Rawls Course, verify response shows `round_stats` with calculated values. Test 9-hole mode, partial round (13 holes), and review screen.
 - **Blocks:** Round History List (needs rounds to exist)
+
+**Taste decisions (from Duk):**
+1. **Stepper input** — large buttons, starts at par, +/- from there. Sun-readable, glove-friendly.
+2. **Scorecard layout** — Front 9 / Back 9 tabs, vertical list, expanded/collapsed rows.
+3. **Auto-advance + manual override** — "Next Hole" advances automatically, but swipe/tap/jump anywhere.
+4. **All 4 fields per hole** — Score (required), Putts, Fairway (hidden on par 3), GIR. Full data capture.
+5. **Auto-save draft + explicit submit** — local persistence, resume after crash, review before submit.
+6. **9-hole + flexible modes** — Full 18, Front 9, Back 9, or "play until dark" (submit anytime).
+7. **Running header** — Current Hole / Total Over-Under / Total Strokes. Top-right "Scorecard" button for review/jump.
+8. **Review screen** — table view of all holes, tap to edit, summary stats, submit button.
 
 **3. [CC] Round History List**
 - **Endpoint:** `GET /api/v1/rounds?user_id={uuid}&limit=10`
