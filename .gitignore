@@ -43,6 +43,9 @@ venv.bak/
 .env.staging
 !.env.example
 
+# iOS build-time secrets (real values live here; only the .example is committed)
+Secrets.xcconfig
+
 # ─── IDE / Editor ───
 .vscode/
 .idea/
@@ -98,6 +101,13 @@ data/rounds/*.json
 *.jsonl
 my_round*.json
 15hcp_testround*.json
+
+# ─── Xcode (per-user state) ───
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+DerivedData/
 
 # ─── OS ───
 Thumbs.db

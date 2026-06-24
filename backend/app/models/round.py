@@ -118,6 +118,24 @@ class ShotModel(BaseModel):
         return CLUB_CODES.get(self.club, self.club)
 
 
+class HoleResult(BaseModel):
+    """Per-hole scorecard entry for simple round logging."""
+    hole_number: int = Field(..., ge=1, le=18)
+    par: int = Field(..., ge=3, le=5)
+    yardage: Optional[int] = None
+    score: int = Field(..., ge=1, le=15)
+    putts: int = Field(default=2, ge=0, le=10)
+    fairway: Optional[bool] = None  # True = hit, False = missed, None = par 3
+    gir: Optional[bool] = None      # Green in regulation
+
+
+class TeeBox(BaseModel):
+    """Selected tee box for the round."""
+    tee_name: str
+    rating: Optional[float] = None
+    slope: Optional[int] = None
+
+
 class RoundPayload(BaseModel):
     user_id: str
     round_date: str
@@ -126,7 +144,17 @@ class RoundPayload(BaseModel):
         ...,
         description="Player's Handicap Index at time of round (e.g. 15.2, 8.4)"
     )
-    shots: List[ShotModel]
+    # --- NEW: Simple scorecard mode (optional, alternative to full shot data) ---
+    course_id: Optional[str] = Field(
+        None,
+        description="Cached course ID from /courses/search"
+    )
+    tee_box: Optional[TeeBox] = None
+    hole_data: Optional[List[HoleResult]] = None
+    total_score: Optional[int] = None
+    total_putts: Optional[int] = None
+    # --- Full shot-by-shot mode (existing) ---
+    shots: Optional[List[ShotModel]] = None
     reflection: Optional[str] = Field(
         None,
         description="Player's 3-5 sentence reflection on the round. What stood out, what was good/bad, tendencies noticed."
