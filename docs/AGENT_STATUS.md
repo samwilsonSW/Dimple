@@ -34,6 +34,7 @@
 
 ## Completed (Last 7 Days)
 
+- 2026-06-24: **Claude Code — Supabase key rotation complete (Path B).** Installed `supabase==2.30.0` into the local `.venv` (the upgrade Kanary pinned in requirements). Verified the backend connects with the new `sb_secret_…` key — `GET /api/v1/rounds` returns 200 (was 500 under 2.10.0). Verified the iOS side: `supabase-swift` has no JWT-format gate, and Supabase accepts the new `sb_publishable_…` key (401 permission-denied = valid key, RLS-locked). Duk disabled the legacy keys → the leaked anon key is revoked and the GitGuardian incident is resolved. Security thread fully closed.
 - 2026-06-23: **Kanary (backend/orchestrator) — supabase-py upgrade** — Bumped `supabase==2.10.0` → `supabase==2.30.0` in `backend/requirements.txt`. Fixes 500 errors caused by v2.10.0's hard JWT regex rejecting new `sb_secret_…` anon keys. Committed and pushed to `main`.
 - 2026-06-23: **Kanary (backend/orchestrator) — main branch catch-up** — `main` is now the single source of truth. All Kanary branch work merged. Docs updated (TASK_BOARD, WAKE_UP, CHROLLO_ORCHESTRATION_PLAN). AGENT_STATUS.md created for Claude Code heartbeat.
 - 2026-06-23: Security fix — moved the Supabase anon key out of source into a git-ignored `Secrets.xcconfig` (build-time Info.plist injection, runtime read). Tripped GitGuardian on the public repo. Open as PR into Kanary (`security/externalize-supabase-key`). Anon key being rotated in Supabase; RLS verified (anon role has no table access).
@@ -81,5 +82,5 @@
 
 ---
 
-*Last updated: 2026-06-24*
+*Last updated: 2026-06-24 (Claude Code — key rotation closed)*
 *Next expected update: When Claude Code starts Scorecard Entry View*
