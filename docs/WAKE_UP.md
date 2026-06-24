@@ -25,7 +25,7 @@
 
 ### What's Blocked
 - Voice memo flow — waiting on Duk taste decision
-- Quick round mode — waiting on Duk taste decision
+- Quick round mode — cancelled per Duk taste (too reductive)
 
 ---
 

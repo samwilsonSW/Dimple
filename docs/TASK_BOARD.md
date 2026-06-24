@@ -68,7 +68,7 @@
 ## Blocked
 
 - Voice memo parsing — **CANCELLED per Duk taste call.** Simple scorecard + optional typed reflection is the path. Voice memos feel weird post-round.
-- Quick round mode (just total score + reflection) — waiting on: Duk taste call
+- Quick round mode — **CANCELLED per Duk taste call.** Too reductive; per-hole scorecard is the path.
 
 ---
 
