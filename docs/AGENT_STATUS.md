@@ -12,7 +12,7 @@
 - **Task:** Scorecard Entry View
 - **Started:** 2026-06-23
 - **Status:** Not started
-- **Branch:** main (Kanary merged to main 2026-06-23)
+- **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 
 ## Progress
 

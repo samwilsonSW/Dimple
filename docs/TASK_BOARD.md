@@ -50,7 +50,7 @@
 - [ ] Kanary: Verify backend handles all frontend calls correctly
 - [ ] Duk: Test on device, confirm flow feels right
 
-**Then:** Merge Kanary → main, rewrite README.md to reflect working features.
+**Then:** Duk merges Kanary → main, rewrite README.md to reflect working features.
 
 ---
 

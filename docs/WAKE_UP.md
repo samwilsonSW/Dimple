@@ -10,7 +10,7 @@
 
 **Last Updated:** 2026-06-23  
 **API Version:** 0.6.0  
-**Branch:** Kanary (integration branch for both frontend and backend)
+**Branch:** Kanary (working branch — main is release, Kanary is where we build)
 
 ### What's Working
 - ✅ Course search backend (`/api/v1/courses/search`, `/api/v1/courses/{id}`)
