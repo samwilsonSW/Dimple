@@ -43,6 +43,9 @@ venv.bak/
 .env.staging
 !.env.example
 
+# iOS build-time secrets (real values live here; only the .example is committed)
+Secrets.xcconfig
+
 # ─── IDE / Editor ───
 .vscode/
 .idea/

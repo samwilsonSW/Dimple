@@ -34,6 +34,7 @@
 
 ## Completed (Last 7 Days)
 
+- 2026-06-23: Security fix — moved the Supabase anon key out of source into a git-ignored `Secrets.xcconfig` (build-time Info.plist injection, runtime read). Tripped GitGuardian on the public repo. Open as PR into Kanary (`security/externalize-supabase-key`). Anon key being rotated in Supabase; RLS verified (anon role has no table access).
 - 2026-06-22: Course Search UI complete — search, select, tee picker working
 
 ---
