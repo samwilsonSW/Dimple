@@ -12,7 +12,7 @@
 - **Task:** Scorecard Entry View
 - **Started:** 2026-06-23
 - **Status:** Not started
-- **Branch:** Kanary
+- **Branch:** main (Kanary merged to main 2026-06-23)
 
 ## Progress
 
@@ -34,6 +34,8 @@
 
 ## Completed (Last 7 Days)
 
+- 2026-06-23: **Kanary (backend/orchestrator) — supabase-py upgrade** — Bumped `supabase==2.10.0` → `supabase==2.30.0` in `backend/requirements.txt`. Fixes 500 errors caused by v2.10.0's hard JWT regex rejecting new `sb_secret_…` anon keys. Committed and pushed to `main`.
+- 2026-06-23: **Kanary (backend/orchestrator) — main branch catch-up** — `main` is now the single source of truth. All Kanary branch work merged. Docs updated (TASK_BOARD, WAKE_UP, CHROLLO_ORCHESTRATION_PLAN). AGENT_STATUS.md created for Claude Code heartbeat.
 - 2026-06-23: Security fix — moved the Supabase anon key out of source into a git-ignored `Secrets.xcconfig` (build-time Info.plist injection, runtime read). Tripped GitGuardian on the public repo. Open as PR into Kanary (`security/externalize-supabase-key`). Anon key being rotated in Supabase; RLS verified (anon role has no table access).
 - 2026-06-22: Course Search UI complete — search, select, tee picker working
 
@@ -79,5 +81,5 @@
 
 ---
 
-*Last updated: 2026-06-23*
+*Last updated: 2026-06-24*
 *Next expected update: When Claude Code starts Scorecard Entry View*
