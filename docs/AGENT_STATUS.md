@@ -11,20 +11,23 @@
 
 - **Task:** Scorecard Entry View
 - **Started:** 2026-06-24
-- **Status:** In Progress (Claude Code) — building on branch `feature/scorecard-entry`, PR into Kanary when ready
+- **Status:** In Review (Claude Code) — built, `xcodebuild` green, PR open into Kanary; awaiting Duk on-device taste test
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 
 ## Progress
 
-- [ ] Handicap setup screen + `HandicapStore` (UserDefaults) + Settings access
-- [ ] Round setup screen (mode select + handicap pre-fill) from tee picker
-- [ ] Models: `RoundMode`, `DraftRound`, `HoleEntry`, encodable `RoundPayload`, `RoundStats`
-- [ ] `ScorecardEntryView` — Front/Back 9 tabs, per-hole steppers, nav
-- [ ] Per-hole form (score/putts/fairway/GIR) + edge cases (par 3, ace, eagle, putts cap)
-- [ ] Draft auto-save / resume (`DraftRoundStore`)
-- [ ] Review screen + submit to `POST /api/v1/rounds`
-- [ ] `RoundSummaryView` — display `round_stats`
-- [ ] Build green (xcodebuild) + on-device taste test (Duk)
+- [x] Handicap setup screen + `HandicapStore` (UserDefaults) + Settings access (Coach menu)
+- [x] Round setup screen (mode select + handicap pre-fill) from tee picker
+- [x] Models: `RoundMode`, `DraftRound`, `HoleEntry`, encodable `RoundPayload`, `RoundStats`
+- [x] `ScorecardEntryView` — Front/Back 9 tabs, per-hole steppers, nav, live totals
+- [x] Per-hole form (score/putts/fairway/GIR) + edge cases (par 3, ace, eagle, putts cap)
+- [x] Draft auto-save / resume (`DraftRoundStore`)
+- [x] Review screen + submit to `POST /api/v1/rounds`
+- [x] `RoundSummaryView` — display `round_stats`
+- [x] Build green (xcodebuild, generic iOS Simulator)
+- [ ] On-device taste test (Duk) — sun readability, one-handed steppers, full flow
+
+**Notes for Duk/Kanary:** swipe-between-holes deferred (tap-to-jump + Front/Back tabs + Prev/Next cover navigation); per-hole yardage comes from `/courses/{id}` (first tee set, not the selected tee); post-submit stays on the summary screen since Round History List isn't built yet.
 
 ## Blockers
 

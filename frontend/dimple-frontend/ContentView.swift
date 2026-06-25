@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var showWelcome = !HandicapStore.shared.hasOnboarded
+
     var body: some View {
         TabView {
             NavigationStack {
@@ -23,6 +25,11 @@ struct ContentView: View {
                 }
         }
         .tint(.forestGreen)
+        .fullScreenCover(isPresented: $showWelcome) {
+            NavigationStack {
+                HandicapSetupView(mode: .welcome) { showWelcome = false }
+            }
+        }
     }
 }
 
