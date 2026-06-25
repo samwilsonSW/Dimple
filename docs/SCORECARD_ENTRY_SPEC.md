@@ -12,6 +12,83 @@ Per-hole scorecard entry. Not post-round — **post-hole**, while waiting on the
 
 ---
 
+## App Launch Flow (First-Time Setup)
+
+### Handicap Setup Screen
+
+**When shown:** On first app launch (no stored handicap). Can be accessed later via Settings.
+
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│                                     │
+│         Welcome to Dimple           │
+│                                     │
+│    [Golf ball / flag icon]          │
+│                                     │
+│    What's your handicap index?      │
+│                                     │
+│         [ 15.2 ]                    │  ← large number input
+│                                     │
+│    [−]              [+]             │  ← stepper (0.1 increments)
+│                                     │
+│    This helps us calculate          │
+│    strokes gained analytics.        │
+│                                     │
+│         [ Get Started ]             │  ← primary button
+│                                     │
+│    You can change this anytime      │
+│         in Settings.                │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+**Behavior:**
+- Default value: `0.0` (scratch)
+- Stepper increments: `0.1` (golf handicaps are decimal)
+- Range: `0.0` to `54.0`
+- Store in `UserDefaults` key: `user_handicap_index`
+- Also store `handicap_set_date` (for "when did you last update?" prompts)
+- **Skip option:** "I'll set this later" → stores `null`, prompts again on first round creation
+
+**Validation:**
+- Must be numeric
+- Must be ≥ 0 and ≤ 54
+- One decimal place max
+
+**Accessibility:**
+- Large tap targets (44pt min)
+- High contrast
+- Works in sunlight
+
+---
+
+## Handicap in Round Flow
+
+**Pre-fill:** When starting a new round, read `user_handicap_index` from UserDefaults:
+- If set: pre-fill handicap field, allow editing
+- If not set: show Handicap Setup modal before round starts
+
+**Per-round override:** User can edit handicap for any individual round (in case they're playing with a temporary adjustment or just got a new handicap). This does NOT update the stored default.
+
+**Settings access:** Profile/Settings screen allows updating stored handicap at any time.
+
+---
+
+## Future: User Profile Endpoint (Option C)
+
+**Not implemented yet.** When backend adds `GET /api/v1/me`:
+1. App fetches profile on launch (including handicap)
+2. Falls back to local UserDefaults if offline
+3. Syncs local changes to backend when online
+4. Backend becomes source of truth
+
+**Migration path:** D → C → B (local cache of remote profile)
+
+---
+
+---
+
 ## Core Mechanics
 
 ### Input: Stepper (NOT number pad)
