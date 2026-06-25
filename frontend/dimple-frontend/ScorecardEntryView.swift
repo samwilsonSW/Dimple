@@ -221,19 +221,31 @@ final class ScorecardViewModel {
     }
 }
 
-// MARK: - Scorecard Entry View
+// MARK: - Scorecard Entry View (focused single hole)
+//
+// Three fixed zones per Duk's taste call:
+//   Top    — current hole + running totals
+//   Middle — fairway / GIR / putts (scrolls if tight)
+//   Bottom — score +/- and the big primary action (pinned, thumb-reachable)
+// The full all-holes scorecard lives behind the top-right "Scorecard" button.
 
 struct ScorecardEntryView: View {
     let vm: ScorecardViewModel
     let onReview: () -> Void
 
+    private var hole: HoleState? { vm.holes.first { $0.holeNumber == vm.currentHoleNumber } }
+
     var body: some View {
-        VStack(spacing: 0) {
-            totalsHeader
-            if vm.hasFront && vm.hasBack { nineTabs }
-            holeList
+        Group {
+            if let h = hole {
+                VStack(spacing: 0) {
+                    topZone(h)
+                    Divider()
+                    ScrollView { middleZone(h).padding() }
+                }
+                .safeAreaInset(edge: .bottom) { bottomZone(h) }
+            }
         }
-        .navigationTitle("Hole \(vm.currentHoleNumber)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -245,24 +257,34 @@ struct ScorecardEntryView: View {
         }
     }
 
-    // MARK: Totals header
+    // MARK: Top — hole + running totals
 
-    private var totalsHeader: some View {
-        HStack(spacing: 0) {
-            stat(title: "Strokes", value: "\(vm.totalStrokes)")
-            divider
-            stat(title: "To Par", value: formatToPar(vm.totalToPar),
-                 color: .scoreTone(vm.totalToPar))
-            divider
-            stat(title: "Putts", value: "\(vm.totalPutts)")
+    private func topZone(_ h: HoleState) -> some View {
+        VStack(spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Hole \(h.holeNumber)")
+                    .font(.system(.title, design: .rounded)).fontWeight(.bold)
+                Spacer()
+                Text("Par \(h.par)").font(.headline).foregroundStyle(Color(.secondaryLabel))
+                if let y = h.yardage, y > 0 {
+                    Text("· \(y) yds").font(.subheadline).foregroundStyle(Color(.tertiaryLabel))
+                }
+            }
+            HStack(spacing: 0) {
+                stat("To Par", formatToPar(vm.totalToPar), color: Color.scoreTone(vm.totalToPar))
+                divider
+                stat("Strokes", "\(vm.totalStrokes)")
+                divider
+                stat("Putts", "\(vm.totalPutts)")
+            }
         }
-        .padding(.vertical, 12)
+        .padding(.horizontal).padding(.top, 8).padding(.bottom, 12)
         .background(Color(.secondarySystemBackground))
     }
 
-    private func stat(title: String, value: String, color: Color = Color(.label)) -> some View {
+    private func stat(_ title: String, _ value: String, color: Color = Color(.label)) -> some View {
         VStack(spacing: 3) {
-            Text(value).font(.system(.title2, design: .rounded)).fontWeight(.bold)
+            Text(value).font(.system(.title3, design: .rounded)).fontWeight(.bold)
                 .foregroundStyle(color).monospacedDigit().contentTransition(.numericText())
             Text(title).font(.caption2).foregroundStyle(Color(.secondaryLabel))
                 .textCase(.uppercase).kerning(0.5)
@@ -270,72 +292,109 @@ struct ScorecardEntryView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var divider: some View { Rectangle().fill(Color(.separator)).frame(width: 0.5, height: 32) }
+    private var divider: some View { Rectangle().fill(Color(.separator)).frame(width: 0.5, height: 30) }
 
-    // MARK: Front/Back tabs
+    // MARK: Middle — fairway / GIR / putts
 
-    private var nineTabs: some View {
-        Picker("Nine", selection: Binding(get: { vm.selectedNine }, set: { vm.selectedNine = $0 })) {
-            Text("Front 9").tag(ScorecardViewModel.Nine.front)
-            Text("Back 9").tag(ScorecardViewModel.Nine.back)
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal).padding(.top, 10)
-    }
-
-    // MARK: Hole list
-
-    private var holeList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(vm.holes(in: vm.selectedNine)) { hole in
-                        if hole.holeNumber == vm.currentHoleNumber {
-                            HoleEntryView(vm: vm, holeNumber: hole.holeNumber, onReview: onReview)
-                                .id(hole.holeNumber)
-                        } else {
-                            collapsedRow(hole).id(hole.holeNumber)
-                        }
+    private func middleZone(_ h: HoleState) -> some View {
+        VStack(spacing: 22) {
+            if !h.isPar3 {
+                field("Fairway") {
+                    TriToggle(leftLabel: "Missed", rightLabel: "Hit", value: h.fairway) {
+                        vm.setFairway(h.holeNumber, $0)
                     }
                 }
-                .padding(.horizontal).padding(.vertical, 12)
             }
-            .onChange(of: vm.currentHoleNumber) { _, n in
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    proxy.scrollTo(n, anchor: .top)
+            field("Green in Regulation") {
+                TriToggle(leftLabel: "No", rightLabel: "Yes", value: h.gir) {
+                    vm.setGir(h.holeNumber, $0)
                 }
+            }
+            puttsField(h)
+        }
+    }
+
+    private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(label).font(.headline)
+            content()
+        }
+    }
+
+    private func puttsField(_ h: HoleState) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Putts").font(.headline)
+                if vm.puttsLocked(h.holeNumber) {
+                    Text("Hole-in-one").font(.caption2).foregroundStyle(Color(.tertiaryLabel))
+                }
+            }
+            Spacer()
+            BigStepper(
+                valueText: "\(h.putts)", size: .small,
+                minusEnabled: !vm.puttsLocked(h.holeNumber) && h.putts > 0,
+                plusEnabled: !vm.puttsLocked(h.holeNumber) && h.putts < max(h.score - 1, 0),
+                onMinus: { vm.adjustPutts(h.holeNumber, -1) },
+                onPlus:  { vm.adjustPutts(h.holeNumber, +1) }
+            )
+        }
+    }
+
+    // MARK: Bottom — score + primary action (pinned thumb zone)
+
+    private func bottomZone(_ h: HoleState) -> some View {
+        VStack(spacing: 14) {
+            HStack {
+                Text("Score").font(.headline)
+                Spacer()
+                Text(formatToPar(h.toPar)).font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(Color.scoreTone(h.toPar))
+            }
+            BigStepper(
+                valueText: "\(h.score)", size: .large,
+                minusEnabled: h.score > 1, plusEnabled: true,
+                onMinus: { vm.adjustScore(h.holeNumber, -1) },
+                onPlus:  { vm.adjustScore(h.holeNumber, +1) }
+            )
+            actionRow
+        }
+        .padding(.horizontal).padding(.top, 12).padding(.bottom, 8)
+        .background(.ultraThinMaterial)
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 12) {
+            if !vm.isFirstHole {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    vm.previous()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.headline).foregroundStyle(Color.forestGreen)
+                        .frame(width: 64, height: 54)
+                        .background(Color.forestGreen.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            if vm.isLastHole {
+                primaryButton("Review & Submit", system: "checkmark") { onReview() }
+            } else {
+                primaryButton("Next Hole", system: "chevron.right") { vm.next() }
             }
         }
     }
 
-    private func collapsedRow(_ h: HoleState) -> some View {
+    private func primaryButton(_ title: String, system: String, action: @escaping () -> Void) -> some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            vm.jump(to: h.holeNumber)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
         } label: {
-            HStack(spacing: 12) {
-                Text("\(h.holeNumber)")
-                    .font(.headline).monospacedDigit()
-                    .frame(width: 28)
-                    .foregroundStyle(Color(.secondaryLabel))
-                Text("Par \(h.par)").font(.subheadline).foregroundStyle(Color(.secondaryLabel))
-                Spacer()
-                if h.entered {
-                    Text("\(h.score)")
-                        .font(.headline).monospacedDigit()
-                        .foregroundStyle(Color.scoreTone(h.toPar))
-                    Text(formatToPar(h.toPar))
-                        .font(.caption).foregroundStyle(Color.scoreTone(h.toPar))
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption).foregroundStyle(Color.sageGreen)
-                } else {
-                    Text("—").foregroundStyle(Color(.tertiaryLabel))
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            HStack(spacing: 6) { Text(title); Image(systemName: system) }
+                .font(.title3).fontWeight(.semibold).foregroundStyle(.white)
+                .frame(maxWidth: .infinity).frame(height: 54)
+                .background(Color.forestGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
     }
