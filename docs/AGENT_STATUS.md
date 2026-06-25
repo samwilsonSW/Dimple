@@ -10,19 +10,21 @@
 ## Claude Code — Current Task
 
 - **Task:** Scorecard Entry View
-- **Started:** 2026-06-23
-- **Status:** Not started
+- **Started:** 2026-06-24
+- **Status:** In Progress (Claude Code) — building on branch `feature/scorecard-entry`, PR into Kanary when ready
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 
 ## Progress
 
-- [ ] Create ScorecardEntryView.swift
-- [ ] Wire course_id + tee selection from CourseSearchView
-- [ ] Build per-hole input form (score, putts, fairway, GIR)
-- [ ] Handle par 3 (hide fairway toggle)
-- [ ] Connect to POST /api/v1/rounds with hole_data
-- [ ] Display round_stats response
-- [ ] Test on device
+- [ ] Handicap setup screen + `HandicapStore` (UserDefaults) + Settings access
+- [ ] Round setup screen (mode select + handicap pre-fill) from tee picker
+- [ ] Models: `RoundMode`, `DraftRound`, `HoleEntry`, encodable `RoundPayload`, `RoundStats`
+- [ ] `ScorecardEntryView` — Front/Back 9 tabs, per-hole steppers, nav
+- [ ] Per-hole form (score/putts/fairway/GIR) + edge cases (par 3, ace, eagle, putts cap)
+- [ ] Draft auto-save / resume (`DraftRoundStore`)
+- [ ] Review screen + submit to `POST /api/v1/rounds`
+- [ ] `RoundSummaryView` — display `round_stats`
+- [ ] Build green (xcodebuild) + on-device taste test (Duk)
 
 ## Blockers
 
