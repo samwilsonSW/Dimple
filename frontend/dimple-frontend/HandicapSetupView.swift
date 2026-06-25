@@ -34,20 +34,19 @@ struct HandicapSetupView: View {
                         .multilineTextAlignment(.center)
                         .font(.system(size: 56, weight: .bold, design: .rounded))
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(fieldFocused ? Color.forestGreen.opacity(0.6) : Color(.separator), lineWidth: 1.5)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { fieldFocused = true }
 
-                    BigStepper(
-                        valueText: "",
-                        minusEnabled: value > 0.0,
-                        plusEnabled: value < 54.0,
-                        onMinus: { value = round1(max(0.0, value - 0.1)) },
-                        onPlus:  { value = round1(min(54.0, value + 0.1)) }
-                    )
-                    .overlay(alignment: .center) {
-                        Text("0.1")
-                            .font(.caption2)
-                            .foregroundStyle(Color(.tertiaryLabel))
-                            .offset(y: 36)
-                    }
+                    Text("Tap to type — e.g. 12.4")
+                        .font(.caption)
+                        .foregroundStyle(Color(.tertiaryLabel))
 
                     Text("This helps us calculate strokes-gained analytics.")
                         .font(.subheadline)
@@ -72,6 +71,9 @@ struct HandicapSetupView: View {
         .background(Color(.systemBackground))
         .navigationTitle(mode == .settings ? "Handicap Index" : "")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { fieldFocused = true }
+        }
         .onChange(of: value) { _, v in value = min(max(v, 0.0), 54.0) }
     }
 

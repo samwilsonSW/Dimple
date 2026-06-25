@@ -52,22 +52,20 @@ struct RoundSetupView: View {
                 .font(.subheadline).fontWeight(.semibold)
                 .foregroundStyle(Color.forestGreen)
 
-            HStack(spacing: 16) {
-                TextField("0.0", value: $handicap, format: .number.precision(.fractionLength(1)))
-                    .keyboardType(.decimalPad)
-                    .focused($hcpFocused)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .frame(width: 90)
-                Spacer()
-                BigStepper(
-                    valueText: "",
-                    size: .small,
-                    minusEnabled: handicap > 0.0,
-                    plusEnabled: handicap < 54.0,
-                    onMinus: { handicap = round1(max(0.0, handicap - 0.1)) },
-                    onPlus:  { handicap = round1(min(54.0, handicap + 0.1)) }
+            TextField("0.0", value: $handicap, format: .number.precision(.fractionLength(1)))
+                .keyboardType(.decimalPad)
+                .focused($hcpFocused)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 10).padding(.horizontal, 14)
+                .background(Color(.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(hcpFocused ? Color.forestGreen.opacity(0.6) : Color(.separator), lineWidth: 1.5)
                 )
-            }
+                .contentShape(Rectangle())
+                .onTapGesture { hcpFocused = true }
 
             Text(store.isSet
                  ? "Pre-filled from your profile. Editing here applies to this round only."
