@@ -241,7 +241,9 @@ struct ScorecardEntryView: View {
                 VStack(spacing: 0) {
                     topZone(h)
                     Divider()
-                    ScrollView { middleZone(h).padding() }
+                    middleZone(h)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.horizontal)
                 }
                 .safeAreaInset(edge: .bottom) { bottomZone(h) }
             }
@@ -261,15 +263,16 @@ struct ScorecardEntryView: View {
 
     private func topZone(_ h: HoleState) -> some View {
         VStack(spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            VStack(spacing: 2) {
                 Text("Hole \(h.holeNumber)")
                     .font(.system(.title, design: .rounded)).fontWeight(.bold)
-                Spacer()
-                Text("Par \(h.par)").font(.headline).foregroundStyle(Color(.secondaryLabel))
-                if let y = h.yardage, y > 0 {
-                    Text("· \(y) yds").font(.subheadline).foregroundStyle(Color(.tertiaryLabel))
+                HStack(spacing: 6) {
+                    Text("Par \(h.par)")
+                    if let y = h.yardage, y > 0 { Text("· \(y) yds") }
                 }
+                .font(.subheadline).foregroundStyle(Color(.secondaryLabel))
             }
+            .frame(maxWidth: .infinity)
             HStack(spacing: 0) {
                 stat("To Par", formatToPar(vm.totalToPar), color: Color.scoreTone(vm.totalToPar))
                 divider
@@ -297,39 +300,38 @@ struct ScorecardEntryView: View {
     // MARK: Middle — fairway / GIR / putts
 
     private func middleZone(_ h: HoleState) -> some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 0) {
+            Spacer(minLength: 12)
             if !h.isPar3 {
                 field("Fairway") {
                     TriToggle(leftLabel: "Missed", rightLabel: "Hit", value: h.fairway) {
                         vm.setFairway(h.holeNumber, $0)
                     }
                 }
+                Spacer(minLength: 12)
             }
             field("Green in Regulation") {
                 TriToggle(leftLabel: "No", rightLabel: "Yes", value: h.gir) {
                     vm.setGir(h.holeNumber, $0)
                 }
             }
+            Spacer(minLength: 12)
             puttsField(h)
+            Spacer(minLength: 12)
         }
     }
 
     private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: 12) {
             Text(label).font(.headline)
             content()
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func puttsField(_ h: HoleState) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Putts").font(.headline)
-                if vm.puttsLocked(h.holeNumber) {
-                    Text("Hole-in-one").font(.caption2).foregroundStyle(Color(.tertiaryLabel))
-                }
-            }
-            Spacer()
+        VStack(spacing: 12) {
+            Text("Putts").font(.headline)
             BigStepper(
                 valueText: "\(h.putts)", size: .small,
                 minusEnabled: !vm.puttsLocked(h.holeNumber) && h.putts > 0,
@@ -337,19 +339,23 @@ struct ScorecardEntryView: View {
                 onMinus: { vm.adjustPutts(h.holeNumber, -1) },
                 onPlus:  { vm.adjustPutts(h.holeNumber, +1) }
             )
+            if vm.puttsLocked(h.holeNumber) {
+                Text("Hole-in-one").font(.caption2).foregroundStyle(Color(.tertiaryLabel))
+            }
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Bottom — score + primary action (pinned thumb zone)
 
     private func bottomZone(_ h: HoleState) -> some View {
         VStack(spacing: 14) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("Score").font(.headline)
-                Spacer()
                 Text(formatToPar(h.toPar)).font(.subheadline).fontWeight(.semibold)
                     .foregroundStyle(Color.scoreTone(h.toPar))
             }
+            .frame(maxWidth: .infinity)
             BigStepper(
                 valueText: "\(h.score)", size: .large,
                 minusEnabled: h.score > 1, plusEnabled: true,
