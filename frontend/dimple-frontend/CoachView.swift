@@ -68,6 +68,7 @@ private let suggestedQuestions = [
 struct CoachView: View {
     @Environment(AuthViewModel.self) private var auth
     @State private var vm = CoachViewModel()
+    @State private var showHandicapSettings = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -90,12 +91,20 @@ struct CoachView: View {
         }
         .navigationTitle("Coach")
         .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $showHandicapSettings) {
+            NavigationStack { HandicapSetupView(mode: .settings) }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     if let user = auth.currentUser {
                         Text(user.email ?? user.id)
                             .font(.footnote)
+                    }
+                    Button {
+                        showHandicapSettings = true
+                    } label: {
+                        Label("Edit Handicap", systemImage: "figure.golf")
                     }
                     Button(role: .destructive) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

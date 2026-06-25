@@ -49,7 +49,7 @@ struct CourseSearchResponse: Decodable {
 
 // MARK: - Course Details
 
-struct TeeBox: Decodable, Identifiable, Hashable {
+struct TeeBox: Codable, Identifiable, Hashable {
     let teeId: String
     let teeName: String
     let gender: String?
@@ -67,7 +67,7 @@ struct TeeBox: Decodable, Identifiable, Hashable {
     }
 }
 
-struct HoleInfo: Decodable, Identifiable, Hashable {
+struct HoleInfo: Codable, Identifiable, Hashable {
     let holeNumber: Int
     let par: Int
     let yardage: Int?
