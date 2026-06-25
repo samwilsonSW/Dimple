@@ -9,9 +9,9 @@
 
 ## Claude Code — Current Task
 
-- **Task:** Scorecard Entry View
+- **Task:** Scorecard Entry View — ✅ **merged to Kanary** (PR #8, 2026-06-25)
 - **Started:** 2026-06-24
-- **Status:** In Review (Claude Code) — built, `xcodebuild` green, PR open into Kanary; awaiting Duk on-device taste test
+- **Status:** Awaiting Duk's on-device taste test. Next queued: Round History List (not started — will claim here when actually starting).
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 
 ## Progress
@@ -25,6 +25,7 @@
 - [x] Review screen + submit to `POST /api/v1/rounds`
 - [x] `RoundSummaryView` — display `round_stats`
 - [x] Build green (xcodebuild, generic iOS Simulator)
+- [x] Duk taste refinements: focused single-hole layout, score at bottom, type-in handicap (no stepper), centered + evenly-spaced middle
 - [ ] On-device taste test (Duk) — sun readability, one-handed steppers, full flow
 
 **Notes for Duk/Kanary:** swipe-between-holes deferred (tap-to-jump + Front/Back tabs + Prev/Next cover navigation); per-hole yardage comes from `/courses/{id}` (first tee set, not the selected tee); post-submit stays on the summary screen since Round History List isn't built yet.
@@ -39,11 +40,34 @@
 
 ## Completed (Last 7 Days)
 
+- 2026-06-25: **Claude Code — Scorecard Entry View merged to Kanary (PR #8).** Full per-hole entry flow + Duk's taste refinements (focused single-hole screen, score at bottom, type-in handicap, centered/even middle). `xcodebuild` green; on-device taste test pending.
 - 2026-06-24: **Claude Code — Supabase key rotation complete (Path B).** Installed `supabase==2.30.0` into the local `.venv` (the upgrade Kanary pinned in requirements). Verified the backend connects with the new `sb_secret_…` key — `GET /api/v1/rounds` returns 200 (was 500 under 2.10.0). Verified the iOS side: `supabase-swift` has no JWT-format gate, and Supabase accepts the new `sb_publishable_…` key (401 permission-denied = valid key, RLS-locked). Duk disabled the legacy keys → the leaked anon key is revoked and the GitGuardian incident is resolved. Security thread fully closed.
 - 2026-06-23: **Kanary (backend/orchestrator) — supabase-py upgrade** — Bumped `supabase==2.10.0` → `supabase==2.30.0` in `backend/requirements.txt`. Fixes 500 errors caused by v2.10.0's hard JWT regex rejecting new `sb_secret_…` anon keys. Committed and pushed to `main`.
 - 2026-06-23: **Kanary (backend/orchestrator) — main branch catch-up** — `main` is now the single source of truth. All Kanary branch work merged. Docs updated (TASK_BOARD, WAKE_UP, CHROLLO_ORCHESTRATION_PLAN). AGENT_STATUS.md created for Claude Code heartbeat.
 - 2026-06-23: Security fix — moved the Supabase anon key out of source into a git-ignored `Secrets.xcconfig` (build-time Info.plist injection, runtime read). Tripped GitGuardian on the public repo. Open as PR into Kanary (`security/externalize-supabase-key`). Anon key being rotated in Supabase; RLS verified (anon role has no table access).
 - 2026-06-22: Course Search UI complete — search, select, tee picker working
+
+---
+
+## Session Decisions Log (2026-06-24 → 06-25)
+
+**Security / keys**
+- Supabase **anon key removed from source** → git-ignored `Secrets.xcconfig`, injected into the generated `Info.plist` via `$(SUPABASE_ANON_KEY)`, read at runtime. Project URL stays in source (not secret; `//` breaks xcconfig parsing).
+- **Migrated to Supabase's new API keys**: `sb_publishable_…` (iOS) + `sb_secret_…` (backend). Required upgrading `supabase-py` 2.10 → 2.30 (old version's JWT regex rejected the non-JWT keys). Legacy keys **disabled** → leaked anon key revoked; **GitGuardian incident resolved**. RLS verified (anon role has no table access — the leaked key was inert even before rotation).
+
+**Workflow**
+- **Kanary = working branch, `main` = release; Duk merges.** Never push to `main` without explicit, per-instance permission. Features land via PRs into Kanary (PR #7 = security, PR #8 = scorecard).
+
+**Scorecard feature (Duk taste calls)**
+- **Hole screen = focused single-hole layout** (replaced the spec's scrolling scorecard list): top = hole + running totals, middle = fairway/GIR/putts (centered, evenly spaced), bottom = score +/- and a large pinned Next/Submit (thumb zone). The full all-holes scorecard lives behind the top-right "Scorecard" button (review screen).
+- **Handicap = type-in only** (no 0.1 stepper); stored locally in `UserDefaults` (first-launch setup + Coach-menu settings); per-round override does not change the stored default.
+- Round modes: Full 18 / Front 9 / Back 9 / Play Until Dark (flexible early submit). **Quick round mode cancelled** (Duk taste).
+- Edge cases: hole-in-one → putts 0 / GIR yes / locked; eagle-or-better → auto-GIR; putts capped at score−1. Single active draft in `UserDefaults` with a resume prompt.
+
+**Deferred / known limits**
+- Swipe-between-holes deferred (tap-to-jump + Prev/Next + "Scorecard" jump view cover navigation).
+- Per-hole yardage comes from `/courses/{id}` (backend derives it from the first tee set, not the selected tee).
+- Post-submit stays on the summary screen until **Round History List** exists (next task).
 
 ---
 
@@ -87,5 +111,5 @@
 
 ---
 
-*Last updated: 2026-06-24 (Claude Code — key rotation closed)*
+*Last updated: 2026-06-25 (Claude Code — scorecard merged + session decisions logged)*
 *Next expected update: When Claude Code starts Scorecard Entry View*
