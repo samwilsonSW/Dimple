@@ -9,12 +9,28 @@
 
 ## Claude Code — Current Task
 
-- **Task:** Scorecard Entry View — ✅ **merged to Kanary** (PR #8, 2026-06-25)
-- **Started:** 2026-06-24
-- **Status:** Awaiting Duk's on-device taste test. Next queued: Round History List (not started — will claim here when actually starting).
+- **Task:** Round History List — **claimed, building now**
+- **Started:** 2026-06-25
+- **Status:** In Progress
+- **Spec:** `docs/ROUND_HISTORY_SPEC.md`
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
+- **Previous:** Scorecard Entry View — ✅ merged to Kanary (PR #8, 2026-06-25), awaiting Duk's on-device taste test
 
-## Progress
+## Progress — Round History List
+
+- [ ] `RoundHistoryView` — scrollable list of round cards
+- [ ] `RoundHistoryService` — fetch from `GET /api/v1/rounds`
+- [ ] `RoundHistoryItem` models — decode response with nested `round_stats`
+- [ ] Round card UI — course name, date, score, vs par, GIR, SG chips
+- [ ] Empty state — "No rounds yet" with "+ New Round" button
+- [ ] Pull-to-refresh
+- [ ] Loading skeleton
+- [ ] Error state with retry
+- [ ] Tap card → placeholder detail view
+- [ ] Accessibility (VoiceOver, Dynamic Type)
+- [ ] Dark mode support
+
+## Previous — Scorecard Entry View (COMPLETE)
 
 - [x] Handicap setup screen + `HandicapStore` (UserDefaults) + Settings access (Coach menu)
 - [x] Round setup screen (mode select + handicap pre-fill) from tee picker
@@ -28,7 +44,10 @@
 - [x] Duk taste refinements: focused single-hole layout, score at bottom, type-in handicap (no stepper), centered + evenly-spaced middle
 - [ ] On-device taste test (Duk) — sun readability, one-handed steppers, full flow
 
-**Notes for Duk/Kanary:** swipe-between-holes deferred (tap-to-jump + Front/Back tabs + Prev/Next cover navigation); per-hole yardage comes from `/courses/{id}` (first tee set, not the selected tee); post-submit stays on the summary screen since Round History List isn't built yet.
+**Notes for Duk/Kanary:** 
+- Round History List spec is at `docs/ROUND_HISTORY_SPEC.md` — read before building
+- Scorecard: swipe-between-holes deferred (tap-to-jump + Front/Back tabs + Prev/Next cover navigation); per-hole yardage comes from `/courses/{id}` (first tee set, not the selected tee); post-submit stays on summary screen until Round History List ships
+- Duk should test scorecard on device while Claude Code builds Round History List in parallel
 
 ## Blockers
 

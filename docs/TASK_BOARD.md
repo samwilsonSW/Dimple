@@ -42,11 +42,13 @@
 7. **Running header** — Current Hole / Total Over-Under / Total Strokes. Top-right "Scorecard" button for review/jump.
 8. **Review screen** — table view of all holes, tap to edit, summary stats, submit button.
 
-**3. [CC] Round History List**
-- **Endpoint:** `GET /api/v1/rounds?user_id={uuid}&limit=10`
-- **Flow:** Display past rounds with course name, date, total score, key stats → tap to view detail (future)
-- **Display:** Course name, date, total score, GIR%, Fairway%, Putts
-- **Test:** After entering rounds, verify list populates with stats from `round_stats`
+**3. [CC] Round History List** — ACTIVE (spec ready)
+- **Spec:** `docs/ROUND_HISTORY_SPEC.md` — read this first
+- **Endpoint:** `GET /api/v1/rounds?user_id={uuid}&limit=50`
+- **Flow:** Scrollable list of round cards → tap for detail (placeholder) → pull-to-refresh → empty state with "+ New Round"
+- **Display:** Course name, date, score (vs par), GIR count, 4 SG chips
+- **Test:** After entering rounds, verify list populates with stats from `round_stats`. Test empty state, pull-to-refresh, tap card.
+- **Blocks:** Nothing — can build in parallel with Duk testing scorecard
 
 ---
 
