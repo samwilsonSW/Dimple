@@ -517,4 +517,12 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 
 ---
 
+## Product Principles
+
+> **The real win:** Make scorecard mode so good that people *want* to upgrade to shot-by-shot because they see the value, not because we force them.
+>
+> This guides all development. Low friction first. Rich data as a reward, not a requirement.
+
+---
+
 *This contract is the score. Everyone reads it. Everyone plays from it.*
