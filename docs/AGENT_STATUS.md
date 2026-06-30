@@ -51,7 +51,16 @@
 
 ## Blockers
 
-- None
+- **Round submit was 500 + stats blank — root-caused by Claude Code 2026-06-29. Needs a Kanary-owned DB migration.** (NOT the `round_id` type — `round_id` is the int `id`, and the stats insert is wrapped in try/except so it can't 500.)
+  1. **500 — FIXED in PR #10 (backend, please review — Kanary's lane).** `POST /api/v1/rounds` ran `for shot in payload.shots`, but `payload.shots` is `None` for scorecard-only submits (`hole_data`, no `shots`) → `TypeError: 'NoneType' object is not iterable`. Guarded with `payload.shots or []` and skip embedding when there are no narratives. Verified: the iOS payload that 500'd now returns 200.
+  2. **Stats blank — NEEDS DB MIGRATION (Kanary to write/own).** The live `round_stats` table is missing `avg_putts_per_hole` and `avg_score_to_par` (table predates migration 002). The stats INSERT fails with `PGRST204` and is swallowed by the try/except, so rounds save but show "Stats unavailable". Introspected the live table to confirm exactly those two columns are missing. Proposed SQL (also in PR #10 as `migration 015`, for reference — Kanary owns the real one):
+     ```sql
+     ALTER TABLE round_stats
+         ADD COLUMN IF NOT EXISTS avg_putts_per_hole NUMERIC(4, 2),
+         ADD COLUMN IF NOT EXISTS avg_score_to_par   NUMERIC(4, 2);
+     NOTIFY pgrst, 'reload schema';
+     ```
+  - Cleanup: junk test rounds under fake UUID `550e8400…` ("ZZ Test Course", "Repro Course" ×2) from shape-verification — harmless, don't show for real users; delete whenever.
 
 ## Questions for Duk
 
