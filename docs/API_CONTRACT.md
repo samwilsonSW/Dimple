@@ -114,9 +114,9 @@ POST /api/v1/rounds
 **Response:**
 ```json
 {
-  "round_id": "uuid-of-round",
-  "shots_ingested": 87,
-  "shots_with_sg": 82,
+  "round_id": 42,
+  "shots_ingested": 0,
+  "shots_with_sg": 0,
   "handicap_index": 13.2,
   "reflection_saved": true,
   "status": "success",
@@ -137,7 +137,7 @@ POST /api/v1/rounds
 }
 ```
 
-**Note:** `round_stats` only present when `hole_data` provided. Calculated using Mark Broadie's Strokes Gained methodology with handicap-adjusted baselines.
+**Note:** `round_id` is an **Int** (BIGSERIAL), not a String/UUID. `round_stats` only present when `hole_data` provided. Calculated using Mark Broadie's Strokes Gained methodology with handicap-adjusted baselines.
 
 **Errors:**
 - `500` — Supabase insert failed or embedding failure
@@ -227,15 +227,6 @@ GET /api/v1/courses/search?q={query}&limit={limit}
       "state": "TX",
       "country": "United States",
       "holes": 18
-    },
-    {
-      "id": "24982",
-      "name": "Club At Rawls Creek, The",
-      "club_name": "Club At Rawls Creek, The",
-      "city": "Columbia",
-      "state": "SC",
-      "country": "United States",
-      "holes": 18
     }
   ]
 }
@@ -272,33 +263,6 @@ GET /api/v1/courses/{course_id}
         "par": 72,
         "slope": 148,
         "rating": 81.3
-      },
-      {
-        "tee_id": "female_red",
-        "tee_name": "Red",
-        "gender": "female",
-        "length": 6825,
-        "par": 72,
-        "slope": 142,
-        "rating": 78.6
-      },
-      {
-        "tee_id": "female_white",
-        "tee_name": "White",
-        "gender": "female",
-        "length": 6270,
-        "par": 72,
-        "slope": 136,
-        "rating": 75.5
-      },
-      {
-        "tee_id": "female_gold",
-        "tee_name": "Gold",
-        "gender": "female",
-        "length": 5493,
-        "par": 72,
-        "slope": 115,
-        "rating": 70.5
       }
     ],
     "holes": [
@@ -307,12 +271,6 @@ GET /api/v1/courses/{course_id}
         "par": 4,
         "yardage": 368,
         "handicap": 10
-      },
-      {
-        "hole_number": 2,
-        "par": 5,
-        "yardage": 521,
-        "handicap": 18
       }
     ]
   }
@@ -349,19 +307,21 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
       "course": {"name": "Rawls Course", "city": "Lubbock", "state": "TX"},
       "handicap_index": 13.2,
       "reflection": "Driver was wild today",
-      "round_stats": {
-        "total_score": 85,
-        "gir_percentage": 0.278,
-        "fairway_percentage": 0.5,
-        "sg_putting": -1.2,
-        "sg_approach": -2.5
-      }
+      "round_stats": [
+        {
+          "total_score": 85,
+          "gir_percentage": 0.278,
+          "fairway_percentage": 0.5,
+          "sg_putting": -1.2,
+          "sg_approach": -2.5
+        }
+      ]
     }
   ]
 }
 ```
 
-**Note:** `round_stats` embedded in each round object.
+**Note:** `round_stats` comes back as an **array** (PostgREST embed), not an object. Frontend decoder must tolerate array/object/null. `id` is an **Int** (BIGSERIAL).
 
 ---
 
@@ -468,7 +428,7 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 ### Tables
 
 **`rounds`**
-- `id` (uuid, PK)
+- `id` (BIGSERIAL, PK) — **Int, not UUID**
 - `user_id` (text, lowercase UUID)
 - `round_date` (date)
 - `course` (jsonb)
@@ -477,9 +437,9 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 - `created_at` (timestamp)
 
 **`shot_embeddings`**
-- `id` (uuid, PK)
+- `id` (BIGSERIAL, PK)
 - `shot_id` (text)
-- `round_id` (uuid, FK → rounds)
+- `round_id` (BIGINT, FK → rounds)
 - `user_id` (text, lowercase UUID)
 - `hole_number` (int)
 - `shot_number` (int)
@@ -495,6 +455,24 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 - `narrative` (text)
 - `sg_value` (float, nullable)
 - `embedding` (vector(384))
+
+**`round_stats`**
+- `id` (BIGSERIAL, PK)
+- `round_id` (BIGINT, FK → rounds, ON DELETE CASCADE)
+- `user_id` (text, lowercase UUID)
+- `total_score` (int)
+- `total_putts` (int)
+- `gir_count` (int)
+- `gir_percentage` (numeric)
+- `fairways_hit` (int)
+- `fairways_possible` (int)
+- `fairway_percentage` (numeric)
+- `sg_putting` (numeric)
+- `sg_approach` (numeric)
+- `strokes_over_under` (numeric)
+- `avg_putts_per_hole` (numeric(4,2)) — **Added migration 015**
+- `avg_score_to_par` (numeric(4,2)) — **Added migration 015**
+- `created_at` (timestamp)
 
 **`courses`**
 - `id` (uuid, PK)
@@ -525,6 +503,7 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 | LLM thinking-mode latency > iOS 60s timeout | Monitor response times; consider streaming or async pattern | Kanary |
 | Course API rate limit (50 req/day) | Cache aggressively in Supabase `courses` table | Kanary |
 | 25+ handicap players get fundamentals redirect | Backend handles automatically; frontend shows same response shape | Kanary |
+| Duplicate rounds on retry/submit | **Backlog:** Add `client_round_id` + unique constraint | Kanary |
 
 ---
 
@@ -534,6 +513,7 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 |------|---------|--------|
 | 2026-05-22 | 0.5.0 | Added reflections, SG aggregation, score variance |
 | 2026-06-16 | 0.6.0 | Added course search, simple scorecard mode (`hole_data`), `courses` table |
+| 2026-06-29 | 0.6.0 | Fixed: `round_id` is Int (BIGSERIAL), not String. `round_stats` is array in history response. Added `avg_putts_per_hole`, `avg_score_to_par` columns. |
 
 ---
 

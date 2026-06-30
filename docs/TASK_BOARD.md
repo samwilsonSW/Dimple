@@ -1,87 +1,80 @@
 # Dimple Task Board
 
 > **Owner:** Kanary (OpenClaw)  
-> **Updated:** 2026-06-23  
+> **Updated:** 2026-06-29  
 > **Rule:** Claude Code reads this file, picks up tasks marked `[CC]`, and reports completion to Duk. Kanary never assigns tasks to Duk directly — only surfaces blockers that need taste.
+
+---
+
+## Current State (2026-06-29)
+
+**Core loop is functional:** Course search → Scorecard entry → Submit → Round History display.
+
+### Recently Fixed
+- ✅ **500 on scorecard submit** (PR #10) — `payload.shots` was `None` for scorecard-only submits
+- ✅ **round_id type mismatch** (PR #11) — frontend expected `String?`, backend sent `Int`
+- ✅ **Blank stats** — migration 015 applied (`avg_putts_per_hole`, `avg_score_to_par` columns)
 
 ---
 
 ## Active
 
 ### Backend (Kanary)
-- [x] **Scorecard stats calculation** — `POST /api/v1/rounds` now auto-calculates SG Putting, SG Approach, GIR%, Fairway% from `hole_data`. Stores in `round_stats` table.
+- [x] **Scorecard stats calculation** — `POST /api/v1/rounds` auto-calculates SG Putting, SG Approach, GIR%, Fairway% from `hole_data`. Stores in `round_stats` table.
 - [x] **Round History endpoint** — `GET /api/v1/rounds?user_id={uuid}` — returns rounds with embedded `round_stats`.
 - [ ] **Coach prompt refinement** — Trend-based coaching using `round_stats` is implemented but needs testing. May need iteration on prompt quality.
-- [ ] **Voice memo placeholder** — schema support for `voice_memo_url` in `rounds` table (future parsing).
+- [ ] **Submit idempotency** — Backlog. Add `client_round_id` + unique constraint to prevent duplicates on spotty networks. Not urgent.
 
-### Frontend (Claude Code) — Priority Order
+### Frontend (Claude Code) — All Complete, Awaiting Duk Taste Test
 
-**1. [CC] Course Search UI** ✅ COMPLETE
-- **Endpoint:** `GET /api/v1/courses/search?q={query}&limit=10`
-- **Flow:** Search bar → results list (course name, city, state) → tap to select → tee box picker (from `/api/v1/courses/{course_id}`) → pass `course_id` + selected tee to round creation
-- **Rules:** Lowercase UUIDs for `user_id`. Handle empty states and API errors gracefully.
-- **Test:** Search "Rawls", select "The Rawls Course At Texas Tech", pick Black/Red/White/Gold tees, verify `course_id` flows to round payload.
-- **Status:** Merged to Kanary branch 2026-06-22. Files: `CourseSearchView.swift`, `CourseService.swift`, `CourseModels.swift`
+**1. [CC] Course Search UI** ✅ COMPLETE (merged 2026-06-22)
+- Files: `CourseSearchView.swift`, `CourseService.swift`, `CourseModels.swift`
 
-**2. [CC] Scorecard Entry View** — ACTIVE
-- **Spec:** `docs/SCORECARD_ENTRY_SPEC.md` — read this first. All taste decisions documented.
-- **Endpoint:** `POST /api/v1/rounds` with `hole_data` array
-- **Flow:** Per-hole entry (post-hole, at next tee box) → stepper starting at par → auto-advance with manual override → all 4 fields per hole (score, putts, fairway, GIR) → draft auto-saves locally → review screen → submit → display round_stats response
-- **Response includes:** `round_stats` with SG Putting, SG Approach, GIR%, Fairway%
-- **Rules:** Each hole needs `hole_number`, `par`, `score`, `putts`, `fairway` (bool, null for par 3), `gir` (bool)
-- **Test:** Enter 18 holes for Rawls Course, verify response shows `round_stats` with calculated values. Test 9-hole mode, partial round (13 holes), and review screen.
-- **Blocks:** Round History List (needs rounds to exist)
+**2. [CC] Scorecard Entry View** ✅ COMPLETE (merged 2026-06-25, PR #8)
+- Files: `ScorecardEntryView.swift`, `RoundModels.swift`, `RoundService.swift`, `DraftRoundStore.swift`
+- **Duk taste test:** Pending (on-device, sun readability, one-handed steppers)
 
-**Taste decisions (from Duk):**
-1. **Stepper input** — large buttons, starts at par, +/- from there. Sun-readable, glove-friendly.
-2. **Scorecard layout** — Front 9 / Back 9 tabs, vertical list, expanded/collapsed rows.
-3. **Auto-advance + manual override** — "Next Hole" advances automatically, but swipe/tap/jump anywhere.
-4. **All 4 fields per hole** — Score (required), Putts, Fairway (hidden on par 3), GIR. Full data capture.
-5. **Auto-save draft + explicit submit** — local persistence, resume after crash, review before submit.
-6. **9-hole + flexible modes** — Full 18, Front 9, Back 9, or "play until dark" (submit anytime).
-7. **Running header** — Current Hole / Total Over-Under / Total Strokes. Top-right "Scorecard" button for review/jump.
-8. **Review screen** — table view of all holes, tap to edit, summary stats, submit button.
-
-**3. [CC] Round History List** — ACTIVE (spec ready)
-- **Spec:** `docs/ROUND_HISTORY_SPEC.md` — read this first
-- **Endpoint:** `GET /api/v1/rounds?user_id={uuid}&limit=50`
-- **Flow:** Scrollable list of round cards → tap for detail (placeholder) → pull-to-refresh → empty state with "+ New Round"
-- **Display:** Course name, date, score (vs par), GIR count, 4 SG chips
-- **Test:** After entering rounds, verify list populates with stats from `round_stats`. Test empty state, pull-to-refresh, tap card.
-- **Blocks:** Nothing — can build in parallel with Duk testing scorecard
+**3. [CC] Round History List** ✅ COMPLETE (merged 2026-06-27, PR #9)
+- Files: `RoundHistoryView.swift`, `RoundHistoryModels.swift`, `RoundHistoryService.swift`
+- **Duk taste test:** Pending
 
 ---
 
 ## Merge Criteria (to main)
 
-**Goal:** Course search + tee selection + scorecard input working end-to-end.
+**Goal:** Course search + tee selection + scorecard input + round history working end-to-end.
 
 **Required:**
-- [ ] [CC] Course Search UI — search, select, pick tee
-- [ ] [CC] Scorecard Entry View — 18 holes, submit, get stats back
-- [ ] [CC] Round History List — shows past rounds with stats
-- [ ] Kanary: Verify backend handles all frontend calls correctly
+- [x] [CC] Course Search UI
+- [x] [CC] Scorecard Entry View
+- [x] [CC] Round History List
+- [x] Kanary: Backend handles all frontend calls correctly
 - [ ] Duk: Test on device, confirm flow feels right
+- [ ] Duk: Merge Kanary → main
 
-**Then:** Duk merges Kanary → main, rewrite README.md to reflect working features.
-
----
-
-## Done
-
-- [x] API Contract v0.6.0
-- [x] Course search backend
-- [x] AI Coach endpoint
-- [x] RAG retrieval with reflections
-- [x] Scorecard stats calculation (SG Putting, SG Approach, GIR%, Fairway%)
-- [x] Round history endpoint
+**Then:** Rewrite README.md to reflect working features.
 
 ---
 
-## Blocked
+## Done (Last 30 Days)
 
-- Voice memo parsing — **CANCELLED per Duk taste call.** Simple scorecard + optional typed reflection is the path. Voice memos feel weird post-round.
-- Quick round mode — **CANCELLED per Duk taste call.** Too reductive; per-hole scorecard is the path.
+- 2026-06-29: PR #11 — fix round_id decode (String? → Int?)
+- 2026-06-29: PR #10 — fix 500 on scorecard submit (shots=None guard)
+- 2026-06-29: Migration 015 — add missing `avg_putts_per_hole`, `avg_score_to_par` columns
+- 2026-06-27: PR #9 — Round History List merged to Kanary
+- 2026-06-25: PR #8 — Scorecard Entry View merged to Kanary
+- 2026-06-24: Supabase key rotation complete (legacy keys disabled)
+- 2026-06-22: Course Search UI merged to Kanary
+- 2026-06-17: Course search backend built (GolfCourseAPI.com integration)
+
+---
+
+## Blocked / Deferred
+
+- **Submit idempotency** — Backlog. Prevents duplicate rounds on retry. Simple: add `client_round_id` UUID to payload + unique constraint.
+- **Swipe-to-delete in Round History** — Needs backend `DELETE /rounds/{id}` endpoint first.
+- **Voice memo parsing** — CANCELLED per Duk taste call.
+- **Quick round mode** — CANCELLED per Duk taste call.
 
 ---
 
@@ -97,4 +90,4 @@
 
 ---
 
-*Last sync: Kanary → Duk → Claude Code workflow established.*
+*Last updated: 2026-06-29 by Kanary*
