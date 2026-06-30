@@ -150,7 +150,7 @@ struct HolePayload: Encodable {
 // MARK: - Submit Response
 
 struct RoundIngestResponse: Decodable {
-    let round_id: String?
+    let round_id: Int?     // backend returns the int rounds.id (BIGSERIAL), not a UUID string
     let status: String?
     let round_stats: RoundStats?
 }
