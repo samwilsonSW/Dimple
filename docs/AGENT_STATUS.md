@@ -9,26 +9,35 @@
 
 ## Claude Code — Current Task
 
-- **Task:** Round History List — **claimed, building now**
+- **Task:** Round History List — built, PR into Kanary
 - **Started:** 2026-06-25
-- **Status:** In Progress
+- **Status:** In Review (Claude Code) — `xcodebuild` green, PR open into Kanary; awaiting Duk taste test
 - **Spec:** `docs/ROUND_HISTORY_SPEC.md`
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 - **Previous:** Scorecard Entry View — ✅ merged to Kanary (PR #8, 2026-06-25), awaiting Duk's on-device taste test
 
 ## Progress — Round History List
 
-- [ ] `RoundHistoryView` — scrollable list of round cards
-- [ ] `RoundHistoryService` — fetch from `GET /api/v1/rounds`
-- [ ] `RoundHistoryItem` models — decode response with nested `round_stats`
-- [ ] Round card UI — course name, date, score, vs par, GIR, SG chips
-- [ ] Empty state — "No rounds yet" with "+ New Round" button
-- [ ] Pull-to-refresh
-- [ ] Loading skeleton
-- [ ] Error state with retry
-- [ ] Tap card → placeholder detail view
-- [ ] Accessibility (VoiceOver, Dynamic Type)
-- [ ] Dark mode support
+- [x] `RoundHistoryView` — scrollable list of round cards
+- [x] `RoundHistoryService` — fetch from `GET /api/v1/rounds`
+- [x] `RoundHistoryItem` models — decode response (tolerant `round_stats` array/object; `id` is Int)
+- [x] Round card UI — course name, date, score, vs par, GIR, SG chips
+- [x] Empty state — "No rounds yet" with "+ New Round" button
+- [x] Pull-to-refresh
+- [x] Loading skeleton
+- [x] Error state with retry
+- [x] Tap card → placeholder detail view (`RoundDetailView`)
+- [x] Accessibility (per-card VoiceOver label, Dynamic Type via semantic fonts)
+- [x] Dark mode support (semantic colors throughout)
+- [x] Build green (xcodebuild, generic iOS Simulator)
+- [ ] On-device taste test (Duk)
+
+**Reality vs spec (verified against the live backend):**
+- `GET /api/v1/rounds` returns `id` as an **Int** (BIGSERIAL), and **`round_stats` as an array** (PostgREST embed), not the object the spec assumed — decoder tolerates array/object/null.
+- **SG chips:** only **G (putting)** and **A (approach)** have real backend data; **P (short game)** and **F (driving)** show "—" placeholders (backend doesn't expose those SG categories yet) rather than duplicating/fabricating values.
+- **Surfaced as a 3rd tab** ("History") — answers spec open-question #1 (tab vs standalone) with *tab*; "+ New Round" switches to the New Round tab. Easy to change if Duk prefers standalone.
+- **Swipe-to-delete deferred** — backend `DELETE /rounds/{id}` doesn't exist yet; omitted rather than shipping a dead/fake button.
+- ⚠️ A junk test round (`id 91`, "ZZ Test Course (delete me)", under fake UUID `550e8400…`, empty stats) is in the dev DB from shape-verification — it does NOT appear for real users; flagged for cleanup (auto-mode blocked me from deleting it directly).
 
 ## Previous — Scorecard Entry View (COMPLETE)
 
