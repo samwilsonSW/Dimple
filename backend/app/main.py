@@ -114,8 +114,9 @@ def ingest_round(payload: RoundPayload):
     round_id = result.data[0]["id"]
 
     # 2) Auto-generate narratives for all shots
+    # `shots` is optional — scorecard-only submissions (hole_data) omit it.
     shots_with_narrative: List[ShotModel] = []
-    for shot in payload.shots:
+    for shot in (payload.shots or []):
         narrative = generate_shot_narrative(shot)
         shots_with_narrative.append(
             ShotModel(
@@ -124,15 +125,17 @@ def ingest_round(payload: RoundPayload):
             )
         )
 
-    # 3) Batch embed all narratives locally
+    # 3) Batch embed all narratives locally (skip entirely in scorecard-only mode)
     narratives = [shot.narrative for shot in shots_with_narrative]
-    try:
-        vectors = embed_texts(narratives)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Local embedding failed: {str(e)}"
-        )
+    vectors = []
+    if narratives:
+        try:
+            vectors = embed_texts(narratives)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Local embedding failed: {str(e)}"
+            )
 
     # 4) Calculate SG and build rows
     baseline = get_baseline_for_handicap(payload.handicap_index)

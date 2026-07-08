@@ -90,7 +90,7 @@ Kanary's unprompted pings are what make Duk an orchestrator instead of a poller 
 - **AGENT_STATUS.md** — Claude Code's real-time heartbeat. Progress, blockers, questions. Kanary reads this to track frontend state without polling Duk.
 
 ### Branching
-- **`Kanary` is the single integration branch for now** — both frontend and backend land here. (The old "frontend→`main`, backend→`Kanary`" split is dropped; layer-split long-lived branches diverge, and the contract spans both.)
+- **`Kanary` is the working branch** — both frontend and backend land here. `main` is the release branch; Duk merges when ready.
 - **No two agents race the same branch.** Coordinate handoffs or work in isolated branches/worktrees that merge through a gate — divergence already bit us once.
 
 ### When Claude Code Ships

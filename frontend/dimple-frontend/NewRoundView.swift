@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// Owns the new-round flow: course search → tee picker → handoff.
-/// The handoff currently lands on a confirmation placeholder; the Scorecard
-/// Entry View (next [CC] task) will replace that destination and consume the
-/// `RoundCourseSelection` (course_id + tee + hole template).
+/// Owns the new-round flow: course search → tee picker → round setup →
+/// scorecard entry → review → submit → summary. Holds the shared scorecard
+/// view model and drives navigation via a typed path.
 struct NewRoundView: View {
     @State private var path = NavigationPath()
+    @State private var scorecardVM: ScorecardViewModel?
+    @State private var pendingDraft: DraftRound?
+    @State private var showResume = false
+
+    enum RoundRoute: Hashable { case entry, review, summary }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -16,88 +20,62 @@ struct NewRoundView: View {
                     }
                 }
                 .navigationDestination(for: RoundCourseSelection.self) { selection in
-                    RoundSelectionConfirmationView(selection: selection) {
-                        path = NavigationPath()
+                    RoundSetupView(selection: selection) { start in
+                        scorecardVM = ScorecardViewModel(start: start)
+                        path.append(RoundRoute.entry)
                     }
+                }
+                .navigationDestination(for: RoundRoute.self) { route in
+                    routeView(route)
                 }
         }
-    }
-}
-
-// MARK: - Selection Confirmation (placeholder for Scorecard Entry View)
-
-struct RoundSelectionConfirmationView: View {
-    let selection: RoundCourseSelection
-    let onStartOver: () -> Void
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(Color.sageGreen)
-                    Text("Course Selected")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                }
-
-                card {
-                    detailRow("Course", selection.courseName)
-                    if !selection.location.isEmpty {
-                        Divider()
-                        detailRow("Location", selection.location)
-                    }
-                    Divider()
-                    detailRow("Tee", selection.tee.teeName)
-                    Divider()
-                    detailRow("Course ID", selection.courseId, mono: true)
-                    Divider()
-                    detailRow("Holes loaded", "\(selection.holes.count)")
-                }
-
-                Text("This is a placeholder. The Scorecard Entry View will take this selection and post the round.")
-                    .font(.footnote)
-                    .foregroundStyle(Color(.secondaryLabel))
-
-                Button(action: onStartOver) {
-                    Text("Start Over")
-                        .font(.body)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(Color.forestGreen)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
+        .onAppear(perform: maybeOfferResume)
+        .alert("Resume round?", isPresented: $showResume, presenting: pendingDraft) { draft in
+            Button("Resume") {
+                scorecardVM = ScorecardViewModel(draft: draft)
+                path.append(RoundRoute.entry)
             }
-            .padding()
+            Button("Discard", role: .destructive) {
+                DraftRoundStore.shared.clear()
+                pendingDraft = nil
+            }
+            Button("Not now", role: .cancel) {}
+        } message: { draft in
+            Text("You have a round in progress at \(draft.courseName) (hole \(draft.currentHoleNumber)).")
         }
-        .navigationTitle("Confirm")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            content()
+    @ViewBuilder
+    private func routeView(_ route: RoundRoute) -> some View {
+        if let vm = scorecardVM {
+            switch route {
+            case .entry:
+                ScorecardEntryView(vm: vm, onReview: { path.append(RoundRoute.review) })
+            case .review:
+                ScorecardReviewView(
+                    vm: vm,
+                    onEditHole: { n in vm.jump(to: n); path.removeLast() },
+                    onSubmitted: { path.append(RoundRoute.summary) }
+                )
+            case .summary:
+                RoundSummaryView(stats: vm.result, courseName: vm.courseName, onDone: finishRound)
+            }
+        } else {
+            // VM lost (shouldn't happen) — bail back to the search root.
+            Color.clear.onAppear { path = NavigationPath() }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func detailRow(_ label: String, _ value: String, mono: Bool = false) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(Color(.secondaryLabel))
-            Spacer(minLength: 12)
-            Text(value)
-                .font(mono ? .system(.subheadline, design: .monospaced) : .subheadline)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.trailing)
-        }
+    private func maybeOfferResume() {
+        guard path.isEmpty, scorecardVM == nil, let draft = DraftRoundStore.shared.load() else { return }
+        pendingDraft = draft
+        showResume = true
+    }
+
+    private func finishRound() {
+        DraftRoundStore.shared.clear()
+        scorecardVM = nil
+        pendingDraft = nil
+        path = NavigationPath()
     }
 }
