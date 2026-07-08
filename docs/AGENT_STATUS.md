@@ -9,14 +9,12 @@
 
 ## Claude Code — Current Task
 
-- **Task:** Round History List — built, PR into Kanary
-- **Started:** 2026-06-25
-- **Status:** In Review (Claude Code) — `xcodebuild` green, PR open into Kanary; awaiting Duk taste test
-- **Spec:** `docs/ROUND_HISTORY_SPEC.md`
+- **Task:** Idle — all assigned tasks complete, awaiting Duk taste test or new assignment
+- **Status:** Complete (as of 2026-06-27)
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
-- **Previous:** Scorecard Entry View — ✅ merged to Kanary (PR #8, 2026-06-25), awaiting Duk's on-device taste test
+- **Last completed:** Round History List (PR #9, merged 2026-06-27)
 
-## Progress — Round History List
+## Progress — Round History List (COMPLETE)
 
 - [x] `RoundHistoryView` — scrollable list of round cards
 - [x] `RoundHistoryService` — fetch from `GET /api/v1/rounds`
@@ -30,14 +28,14 @@
 - [x] Accessibility (per-card VoiceOver label, Dynamic Type via semantic fonts)
 - [x] Dark mode support (semantic colors throughout)
 - [x] Build green (xcodebuild, generic iOS Simulator)
-- [ ] On-device taste test (Duk)
+- [x] Merged to Kanary (PR #9, 2026-06-27)
+- [ ] On-device taste test (Duk) — scheduled for Sunday round
 
 **Reality vs spec (verified against the live backend):**
 - `GET /api/v1/rounds` returns `id` as an **Int** (BIGSERIAL), and **`round_stats` as an array** (PostgREST embed), not the object the spec assumed — decoder tolerates array/object/null.
 - **SG chips:** only **G (putting)** and **A (approach)** have real backend data; **P (short game)** and **F (driving)** show "—" placeholders (backend doesn't expose those SG categories yet) rather than duplicating/fabricating values.
 - **Surfaced as a 3rd tab** ("History") — answers spec open-question #1 (tab vs standalone) with *tab*; "+ New Round" switches to the New Round tab. Easy to change if Duk prefers standalone.
 - **Swipe-to-delete deferred** — backend `DELETE /rounds/{id}` doesn't exist yet; omitted rather than shipping a dead/fake button.
-- ⚠️ A junk test round (`id 91`, "ZZ Test Course (delete me)", under fake UUID `550e8400…`, empty stats) is in the dev DB from shape-verification — it does NOT appear for real users; flagged for cleanup (auto-mode blocked me from deleting it directly).
 
 ## Previous — Scorecard Entry View (COMPLETE)
 
@@ -60,16 +58,7 @@
 
 ## Blockers
 
-- **Round submit was 500 + stats blank — root-caused by Claude Code 2026-06-29. Needs a Kanary-owned DB migration.** (NOT the `round_id` type — `round_id` is the int `id`, and the stats insert is wrapped in try/except so it can't 500.)
-  1. **500 — FIXED in PR #10 (backend, please review — Kanary's lane).** `POST /api/v1/rounds` ran `for shot in payload.shots`, but `payload.shots` is `None` for scorecard-only submits (`hole_data`, no `shots`) → `TypeError: 'NoneType' object is not iterable`. Guarded with `payload.shots or []` and skip embedding when there are no narratives. Verified: the iOS payload that 500'd now returns 200.
-  2. **Stats blank — NEEDS DB MIGRATION (Kanary to write/own).** The live `round_stats` table is missing `avg_putts_per_hole` and `avg_score_to_par` (table predates migration 002). The stats INSERT fails with `PGRST204` and is swallowed by the try/except, so rounds save but show "Stats unavailable". Introspected the live table to confirm exactly those two columns are missing. Proposed SQL (also in PR #10 as `migration 015`, for reference — Kanary owns the real one):
-     ```sql
-     ALTER TABLE round_stats
-         ADD COLUMN IF NOT EXISTS avg_putts_per_hole NUMERIC(4, 2),
-         ADD COLUMN IF NOT EXISTS avg_score_to_par   NUMERIC(4, 2);
-     NOTIFY pgrst, 'reload schema';
-     ```
-  - Cleanup: junk test rounds under fake UUID `550e8400…` ("ZZ Test Course", "Repro Course" ×2) from shape-verification — harmless, don't show for real users; delete whenever.
+- None. All known issues resolved (PR #10, PR #11, migration 015 applied).
 
 ## Questions for Duk
 
@@ -148,5 +137,5 @@
 
 ---
 
-*Last updated: 2026-06-25 (Claude Code — scorecard merged + session decisions logged)*
-*Next expected update: When Claude Code starts Scorecard Entry View*
+*Last updated: 2026-07-08 (Kanary — docs refresh, all tasks complete)*
+*Next expected update: When Duk assigns next task or provides taste feedback*

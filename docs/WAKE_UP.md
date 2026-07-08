@@ -1,31 +1,35 @@
 # Wake Up Brief
 
 > **Read this first. Every session. No exceptions.**
-> 
+>
 > This is the global state brief for all agents working on Dimple. It tells you what's happening, what's changed, and what matters right now.
 
 ---
 
 ## Current Status (Auto-Updated)
 
-**Last Updated:** 2026-06-23  
-**API Version:** 0.6.0  
+**Last Updated:** 2026-07-08
+**API Version:** 0.6.0
 **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 
 ### What's Working
-- ✅ Course search backend (`/api/v1/courses/search`, `/api/v1/courses/{id}`)
+- ✅ Course search backend + SwiftUI frontend (`/api/v1/courses/search`, `/api/v1/courses/{id}`)
+- ✅ Scorecard Entry View — per-hole entry, draft auto-save, submit
+- ✅ Round History List — scrollable cards with SG chips, pull-to-refresh
 - ✅ Round ingestion (`POST /api/v1/rounds`) — full shot-by-shot + simple scorecard
-- ✅ AI Coach (`POST /api/v1/coach/ask`) — RAG with reflections, SG aggregation
+- ✅ Round stats calculation — SG Putting, SG Approach, GIR%, Fairway%
+- ✅ AI Coach (`POST /api/v1/coach/ask`) — RAG with reflections, SG aggregation, trend-based coaching
 - ✅ Vector search (local embeddings + Supabase pgvector)
 
 ### What's In Progress
-- 🔄 Scorecard Entry View (Claude Code) — next priority
-- 🔄 Round History List (Claude Code) — blocked on scorecard
-- 🔄 Scorecard aggregation backend refinement (Kanary)
+- 🔄 Duk on-device taste test (Sunday round) — validate core loop end-to-end
 
-### What's Blocked
-- Voice memo flow — waiting on Duk taste decision
-- Quick round mode — cancelled per Duk taste (too reductive)
+### What's Blocked / Deferred
+- Coach prompt refinement — needs real scorecard data to tune
+- Submit idempotency — backlog (duplicate prevention on retry)
+- Swipe-to-delete in Round History — needs backend `DELETE /rounds/{id}`
+- Voice memo parsing — CANCELLED per Duk taste
+- Quick round mode — CANCELLED per Duk taste
 
 ---
 
@@ -43,11 +47,11 @@
 
 ## Rules You Will Forget
 
-1. **UUIDs are lowercase** — `550e8400...` not `550E8400...`. Case-sensitive `match_shots` will fail.
-2. **Dates are `YYYY-MM-DD`** — no time component.
-3. **Putting distances are in feet** — everything else is yards.
-4. **Kanary owns the contract** — if backend changes, contract updates first.
-5. **No pushing to main** — Kanary branch only. Duk merges.
+1. **UUIDs are lowercase** - `550e8400...` not `550E8400...`. Case-sensitive `match_shots` will fail.
+2. **Dates are `YYYY-MM-DD`** - no time component.
+3. **Putting distances are in feet** - everything else is yards.
+4. **Kanary owns the contract** - if backend changes, contract updates first.
+5. **No pushing to main** - Kanary branch only. Duk merges.
 
 ---
 
@@ -61,25 +65,31 @@
 **If you're Claude Code:**
 - Read this, then API_CONTRACT.md, then TASK_BOARD.md
 - Pick up `[CC]` tasks
-- Build against the contract — shapes are pinned there
-- **Update `AGENT_STATUS.md` as you work** — progress, blockers, questions for Duk
+- Build against the contract - shapes are pinned there
+- **Update `AGENT_STATUS.md` as you work** - progress, blockers, questions for Duk
 - Report completion to Duk
 
 **If you're Duk:**
 - Read this to see current state at a glance
 - Check TASK_BOARD.md for what's queued
 - Give taste feedback, make ship/iterate calls
-- Never touch code — conduct, don't play
+- Never touch code - conduct, don't play
 
 ---
 
-## Changelog (Last 7 Days)
+## Changelog (Last 30 Days)
 
 | Date | What Changed |
 |------|-------------|
-| 2026-06-18 | API_CONTRACT.md + TASK_BOARD.md created. Orchestration workflow established. |
-| 2026-06-16 | Course search backend added. Simple scorecard mode added. API bumped to 0.6.0. |
-| 2026-05-22 | Reflections, SG aggregation, score variance added. API 0.5.0. |
+| 2026-07-08 | Docs refreshed. Core loop complete. Ready for production test. |
+| 2026-06-29 | PR #11 — round_id decode fix (String? → Int?). Migration 015 applied. |
+| 2026-06-29 | PR #10 — fix 500 on scorecard submit (shots=None guard). |
+| 2026-06-27 | PR #9 — Round History List merged to Kanary. |
+| 2026-06-25 | PR #8 — Scorecard Entry View merged to Kanary. |
+| 2026-06-24 | Supabase key rotation complete (legacy keys disabled). |
+| 2026-06-22 | Course Search UI merged to Kanary. |
+| 2026-06-17 | Course search backend built (GolfCourseAPI.com integration). |
+| 2026-06-16 | API bumped to 0.6.0. Simple scorecard mode added. |
 
 ---
 

@@ -1,21 +1,22 @@
 # Dimple — AI Golf Coach
 
-> **Your personal golf intelligence system.** Track shots, analyze performance with strokes gained analytics, and get coached by an AI that knows your game.
+> **Your personal golf intelligence system.** Track rounds, analyze performance with strokes gained analytics, and get coached by an AI that knows your game.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-iOS%2017+-blue.svg)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
 
 ## What It Does
 
-Dimple turns your golf round data into actionable coaching insights:
+Dimple is a mobile-first golf tracking and coaching app:
 
-1. **Track** — Log structured shot data (distance, lie, club, result)
-2. **Analyze** — Calculate strokes gained vs. handicap-adjusted baselines
-3. **Retrieve** — Find similar shots from your history via vector search
-4. **Coach** — Get personalized advice, drills, and improvement plans from an LLM
+1. **Find Courses** — Search 15,000+ courses, select tees, auto-load yardage/par
+2. **Track Rounds** — Enter scores per hole (score, putts, fairway, GIR) with a sun-readable, one-handed interface
+3. **View History** — See all rounds with strokes gained chips, trends, and stats
+4. **Get Coached** — Ask the AI coach anything about your game. It retrieves your actual shots and gives personalized advice with drill recommendations
 
 ### Example Interaction
 
@@ -37,24 +38,24 @@ Aim for 80% gate success before moving to targets.
 ## Architecture
 
 ```
-┌────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   Player       │───▶│  FastAPI     │────▶│  Supabase       │
-│  (Mobile soon) │     │  Backend     │     │  (Postgres +    │
-└────────────────┘     └──────────────┘     │   pgvector)     │
-       │                   │                └─────────────────┘
-       │                   │                        ▲
-       │                   ▼                        │
-       │            ┌──────────────┐                │
-       │            │  Local       │                │
-       │            │  Embeddings  │────────────────┘
-       │            │  (384-dim)   │
-       │            └──────────────┘
-       │                   │
-       ▼                   ▼
+┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│   iOS App       │───▶│  FastAPI     │────▶│  Supabase       │
+│   (SwiftUI)     │     │  Backend     │     │  (Postgres +    │
+│                 │◀────│              │◀────│   pgvector)     │
+└─────────────────┘     └──────────────┘     └─────────────────┘
+        │                      │
+        │            ┌──────────────┐
+        │            │  Local       │
+        │            │  Embeddings  │
+        │            │  (384-dim)   │
+        │            └──────────────┘
+        │                      │
+        ▼                      ▼
 ┌─────────────────────────────────────────┐
 │  Moonshot LLM (kimi-k2.5)               │
 │  • RAG retrieval (top-5 similar shots)  │
 │  • SG category aggregation              │
+│  • Trend-based coaching                 │
 │  • Structured JSON output               │
 │  • Drill recommendations                │
 └─────────────────────────────────────────┘
@@ -64,9 +65,9 @@ Aim for 80% gate success before moving to targets.
 
 | Decision | Rationale |
 |----------|-----------|
+| **Scorecard-first UX** | Low friction entry (score/putts/fairway/GIR) — rich shot-by-shot is the upgrade, not the gate |
 | **Local embeddings** (all-MiniLM-L6-v2) | Zero API cost, 384-dim, fast enough for real-time |
 | **Handicap-adjusted baselines** | A 15hcp's "good" drive is different from a 5hcp's — baselines scale 0-25 |
-| **Structured shot input** | 5 fields per shot (distance, lie, club, result) — simple but rich |
 | **Vector search + LLM** | Retrieve similar shots for context, let LLM synthesize insights |
 | **Synthetic round generator** | Generate realistic test data from Break X Golf statistics |
 
@@ -74,6 +75,7 @@ Aim for 80% gate success before moving to targets.
 
 ## Tech Stack
 
+- **Frontend**: SwiftUI, iOS 17+
 - **Backend**: FastAPI, Pydantic, SQLAlchemy
 - **Database**: Supabase (Postgres + pgvector)
 - **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
@@ -85,36 +87,39 @@ Aim for 80% gate success before moving to targets.
 
 ## API Endpoints
 
-### Ingest a Round
+### Search Courses
+```bash
+GET /api/v1/courses/search?q=Rawls&limit=10
+```
+
+### Ingest a Round (Scorecard Mode)
 ```bash
 POST /api/v1/rounds
 {
-  "user_id": "player_15hcp",
-  "round_date": "2026-05-27",
-  "course": {"name": "Pine Valley", "par": 71},
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "round_date": "2026-07-08",
+  "course": {"name": "Rawls Course", "city": "Lubbock", "state": "TX"},
   "handicap_index": 15.2,
-  "shots": [
-    {
-      "shot_id": "round_001_h1_s1",
-      "hole_number": 1,
-      "shot_number": 1,
-      "before_distance_yards": 420,
-      "before_lie": "T",
-      "club": "D",
-      "after_distance_yards": 166,
-      "after_lie": "F",
-      "strokes_taken": 1
-    }
+  "course_id": "21027",
+  "tee_box": {"tee_name": "Blue", "rating": 74.9, "slope": 134},
+  "hole_data": [
+    {"hole_number": 1, "par": 4, "yardage": 402, "score": 5, "putts": 2, "fairway": true, "gir": false}
   ],
-  "reflection": "Felt good off the tee today, struggled with approaches"
+  "total_score": 85,
+  "total_putts": 32
 }
+```
+
+### Get Round History
+```bash
+GET /api/v1/rounds?user_id=550e8400-e29b-41d4-a716-446655440000&limit=50
 ```
 
 ### Ask the Coach
 ```bash
 POST /api/v1/coach/ask
 {
-  "user_id": "player_15hcp",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
   "question": "How is my driving?"
 }
 ```
@@ -167,23 +172,35 @@ If you hit a 150-yard approach to 20 feet (expected 1.8 putts), your SG = 3.1 - 
 
 ```
 Dimple/
+├── Dimple/                 # iOS SwiftUI app
+│   ├── Views/              # CourseSearchView, ScorecardEntryView, RoundHistoryView
+│   ├── Services/           # CourseService, RoundService, RoundHistoryService
+│   ├── Models/             # Swift data models
+│   └── DimpleApp.swift
 ├── backend/
 │   ├── app/
 │   │   ├── core/           # Generator, baselines, reflection logic
 │   │   ├── models/         # Pydantic schemas (Shot, Round, CoachResponse)
 │   │   ├── services/       # LLM client, embeddings, Supabase
 │   │   └── main.py         # FastAPI app
-│   ├── migrations/         # Schema evolution (001-008)
+│   ├── migrations/         # Schema evolution (001-015)
 │   └── scripts/            # CLI tools, batch generation
 ├── data/
 │   └── rounds/             # Sample rounds for testing
 ├── dimple_tui.py           # Interactive terminal for testing
+├── docs/
+│   ├── API_CONTRACT.md     # Backend ↔ Frontend interface
+│   ├── TASK_BOARD.md       # What's in progress
+│   ├── AGENT_STATUS.md     # Claude Code heartbeat
+│   └── CHROLLO_ORCHESTRATION_PLAN.md  # How we work
 └── README.md
 ```
 
 ---
 
 ## Running Locally
+
+### Backend
 
 ```bash
 # 1. Clone and setup
@@ -204,14 +221,27 @@ python run.py
 python dimple_tui.py
 ```
 
+### iOS App
+
+Open `Dimple/Dimple.xcodeproj` in Xcode. Build and run on device or simulator.
+
+**Note:** The app needs a reachable backend URL. For local development, run the backend on your machine and update the base URL in `CourseService.swift`. For production, deploy the backend (see below).
+
 ---
 
 ## What's Next
 
-- [ ] **Stats aggregation layer** — Broad questions ("How's my driving?") need aggregate stats, not just similar shots
-- [ ] **LLM-as-Judge evaluation** — Automated quality scoring for coach responses
-- [ ] **Mobile frontend** — PWA for shot logging and coach chat
-- [ ] **Trend analysis** — Multi-round improvement tracking
+- [ ] **Shot-by-shot entry** — Full per-shot tracking (distance, lie, club, result) for power users
+- [ ] **Round detail view** — Per-hole breakdown with map/visualization
+- [ ] **Trend analysis** — Multi-round improvement tracking, handicap progression
+- [ ] **Coach polish** — LLM-as-Judge evaluation, prompt refinement with real data
+- [ ] **Deploy backend** — Fly.io or similar for production API access
+
+## Product Principles
+
+> **The real win:** Make scorecard mode so good that people *want* to upgrade to shot-by-shot because they see the value, not because we force them.
+>
+> Low friction first. Rich data as a reward, not a requirement.
 
 ---
 
