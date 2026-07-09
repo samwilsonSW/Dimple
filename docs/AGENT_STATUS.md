@@ -60,6 +60,52 @@
 
 - None. All known issues resolved (PR #10, PR #11, migration 015 applied).
 
+## New Issue for Claude Code — iOS App Cannot Connect to Backend
+
+**Reported by:** Duk  
+**Date:** 2026-07-09  
+**Status:** Open — needs Claude Code investigation  
+**Branch:** Kanary
+
+### Problem
+iOS app shows error: **"A server with the specified hostname could not be found"** on login.
+
+### Context
+- Backend is running on M1 server (always-on)
+- Cloudflare Tunnel is running on M1 in tmux session `dimple-tunnel`
+- Tunnel URL: `https://links-authority-weddings-times.trycloudflare.com`
+- URL responds with `{"status": "ok"}` from phone browser (both WiFi and cellular)
+- iOS app baseURL updated to the Cloudflare URL in all 4 service files
+
+### What Works
+- ✅ Backend health check via browser on phone
+- ✅ Backend reachable from M1 localhost
+- ✅ Tunnel is active and connected
+
+### What Doesn't Work
+- ❌ iOS app cannot connect — hostname not found error
+
+### Possible Causes (for Claude Code to investigate)
+1. **App Transport Security (ATS)** — iOS may block non-standard domains or require specific entitlements
+2. **URL format in Swift** — trailing slash, http vs https, or string interpolation issue
+3. **DNS resolution on device** — iOS DNS cache or network configuration
+4. **Build/clean issue** — Old URL cached in build, needs clean build folder
+5. **Info.plist configuration** — Missing `NSAppTransportSecurity` settings for arbitrary loads
+
+### Suggested Fix Path
+1. Check `Info.plist` for `NSAppTransportSecurity` → `NSAllowsArbitraryLoads` = true (for development)
+2. Verify all `baseURL` strings in Swift services are exactly `https://links-authority-weddings-times.trycloudflare.com` with no trailing slashes
+3. Clean build folder in Xcode (Shift+Cmd+K), rebuild
+4. Test with a hardcoded URL in a simple `URLSession` request to isolate
+5. Check Console app on Mac for iOS device logs during connection attempt
+
+### Questions for Claude Code
+- Is there any URLSession configuration that might block this domain?
+- Should we add exception domains to Info.plist for `.trycloudflare.com`?
+- Is the baseURL being constructed correctly (no accidental `localhost` fallback)?
+
+**Priority:** Blocks Sunday test. Fix before end-to-end validation.
+
 ## Questions for Duk
 
 - None
