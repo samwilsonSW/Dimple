@@ -9,10 +9,11 @@
 
 ## Claude Code — Current Task
 
-- **Task:** Idle — all assigned tasks complete, awaiting Duk taste test or new assignment
-- **Status:** Complete (as of 2026-06-27)
+- **Task:** Phase B — Conversational Coach Chat UI
+- **Status:** Blocked — waiting on Kanary Phase A backend completion
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 - **Last completed:** Round History List (PR #9, merged 2026-06-27)
+- **Next up:** Implement `CoachChatView`, `ConversationListView`, message threading per `docs/COACH_REWORK_SPEC.md`
 
 ## Progress — Round History List (COMPLETE)
 

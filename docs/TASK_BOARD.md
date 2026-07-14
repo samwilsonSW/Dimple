@@ -1,80 +1,91 @@
 # Dimple Task Board
 
 > **Owner:** Kanary (OpenClaw)  
-> **Updated:** 2026-06-29  
+> **Updated:** 2026-07-14  
 > **Rule:** Claude Code reads this file, picks up tasks marked `[CC]`, and reports completion to Duk. Kanary never assigns tasks to Duk directly — only surfaces blockers that need taste.
 
 ---
 
-## Current State (2026-06-29)
+## Current State (2026-07-14)
 
 **Core loop is functional:** Course search → Scorecard entry → Submit → Round History display.
 
-### Recently Fixed
+**Next major feature:** Conversational Coach (Phase A + Phase B)
+
+---
+
+## Active
+
+### Phase A: Backend Coach Rework (Kanary) — IN PROGRESS
+
+- [ ] **Data inventory builder** — count queries for round_stats, shot_embeddings, reflections
+- [ ] **Conditional prompt assembly** — only include sections when data exists
+- [ ] **Remove 25+ HCP gate** — replace with confidence scaling based on data richness
+- [ ] **Wire `get_trend_summary()`** — use scorecard trends when no shot data
+- [ ] **Skip RAG when no shots** — save compute and latency
+- [ ] **New `POST /api/v1/coach/chat` endpoint** — replaces `/api/v1/coach/ask`
+- [ ] **Conversation persistence** — `conversations` and `messages` tables
+- [ ] **New GET endpoints** — `/conversations`, `/conversations/{id}/messages`
+- [ ] **Update API contract** — v0.7.0
+- [ ] **Migration 016** — create conversations + messages tables
+
+**Spec:** `docs/COACH_REWORK_SPEC.md`
+
+### Phase B: Frontend Coach Chat (Claude Code) — NOT STARTED
+
+- [ ] **[CC] Replace coach endpoint** — switch from `/coach/ask` to `/coach/chat`
+- [ ] **[CC] `CoachChatView`** — bubble-style chat interface
+- [ ] **[CC] `ConversationListView`** — list of past conversations
+- [ ] **[CC] Message threading** — send `conversation_id` for multi-turn
+- [ ] **[CC] Entry points** — Round History "Ask Coach", Coach tab, post-submit
+- [ ] **[CC] Loading/error states** — handle coach response latency
+- [ ] **[CC] Accessibility** — VoiceOver for chat bubbles
+
+**Blocked on:** Phase A backend completion
+**Spec:** `docs/COACH_REWORK_SPEC.md` (Phase B section)
+
+---
+
+## Recently Fixed
+
 - ✅ **500 on scorecard submit** (PR #10) — `payload.shots` was `None` for scorecard-only submits
 - ✅ **round_id type mismatch** (PR #11) — frontend expected `String?`, backend sent `Int`
 - ✅ **Blank stats** — migration 015 applied (`avg_putts_per_hole`, `avg_score_to_par` columns)
 
 ---
 
-## Active
-
-### Backend (Kanary)
-- [x] **Scorecard stats calculation** — `POST /api/v1/rounds` auto-calculates SG Putting, SG Approach, GIR%, Fairway% from `hole_data`. Stores in `round_stats` table.
-- [x] **Round History endpoint** — `GET /api/v1/rounds?user_id={uuid}` — returns rounds with embedded `round_stats`.
-- [ ] **Coach prompt refinement** — Trend-based coaching using `round_stats` is implemented but needs testing. May need iteration on prompt quality.
-- [ ] **Submit idempotency** — Backlog. Add `client_round_id` + unique constraint to prevent duplicates on spotty networks. Not urgent.
-
-### Frontend (Claude Code) — All Complete, Awaiting Duk Taste Test
-
-**1. [CC] Course Search UI** ✅ COMPLETE (merged 2026-06-22)
-- Files: `CourseSearchView.swift`, `CourseService.swift`, `CourseModels.swift`
-
-**2. [CC] Scorecard Entry View** ✅ COMPLETE (merged 2026-06-25, PR #8)
-- Files: `ScorecardEntryView.swift`, `RoundModels.swift`, `RoundService.swift`, `DraftRoundStore.swift`
-- **Duk taste test:** Pending (on-device, sun readability, one-handed steppers)
-
-**3. [CC] Round History List** ✅ COMPLETE (merged 2026-06-27, PR #9)
-- Files: `RoundHistoryView.swift`, `RoundHistoryModels.swift`, `RoundHistoryService.swift`
-- **Duk taste test:** Pending
-
----
-
-## Merge Criteria (to main)
-
-**Goal:** Course search + tee selection + scorecard input + round history working end-to-end.
-
-**Required:**
-- [x] [CC] Course Search UI
-- [x] [CC] Scorecard Entry View
-- [x] [CC] Round History List
-- [x] Kanary: Backend handles all frontend calls correctly
-- [ ] Duk: Test on device, confirm flow feels right
-- [ ] Duk: Merge Kanary → main
-
-**Then:** Rewrite README.md to reflect working features.
-
----
-
 ## Done (Last 30 Days)
 
-- 2026-06-29: PR #11 — fix round_id decode (String? → Int?)
-- 2026-06-29: PR #10 — fix 500 on scorecard submit (shots=None guard)
-- 2026-06-29: Migration 015 — add missing `avg_putts_per_hole`, `avg_score_to_par` columns
-- 2026-06-27: PR #9 — Round History List merged to Kanary
-- 2026-06-25: PR #8 — Scorecard Entry View merged to Kanary
-- 2026-06-24: Supabase key rotation complete (legacy keys disabled)
-- 2026-06-22: Course Search UI merged to Kanary
-- 2026-06-17: Course search backend built (GolfCourseAPI.com integration)
+- 2026-07-14: Coach Rework Spec v2 — conversational, data-source-aware architecture
+- 2026-06-29: PR #11 — fix round_id decode (String? → Int?). Migration 015 applied.
+- 2026-06-29: PR #10 — fix 500 on scorecard submit (shots=None guard).
+- 2026-06-27: PR #9 — Round History List merged to Kanary.
+- 2026-06-25: PR #8 — Scorecard Entry View merged to Kanary.
+- 2026-06-24: Supabase key rotation complete (legacy keys disabled).
+- 2026-06-22: Course Search UI merged to Kanary.
+- 2026-06-17: Course search backend built (GolfCourseAPI.com integration).
 
 ---
 
 ## Blocked / Deferred
 
-- **Submit idempotency** — Backlog. Prevents duplicate rounds on retry. Simple: add `client_round_id` UUID to payload + unique constraint.
+- **Submit idempotency** — Backlog. Add `client_round_id` + unique constraint to prevent duplicates on spotty networks.
 - **Swipe-to-delete in Round History** — Needs backend `DELETE /rounds/{id}` endpoint first.
 - **Voice memo parsing** — CANCELLED per Duk taste call.
 - **Quick round mode** — CANCELLED per Duk taste call.
+- **Enhanced scorecard fields** (miss direction) — Future enhancement for richer trend data.
+
+---
+
+## Merge Criteria (to main)
+
+**Goal:** Conversational coach working end-to-end.
+
+**Required:**
+- [ ] Kanary: Phase A backend complete (new endpoints, migration applied)
+- [ ] [CC] Phase B frontend complete (chat UI, conversation list)
+- [ ] Duk: Test on device, confirm conversational flow feels right
+- [ ] Duk: Merge Kanary → main
 
 ---
 
@@ -90,4 +101,4 @@
 
 ---
 
-*Last updated: 2026-06-29 by Kanary*
+*Last updated: 2026-07-14 by Kanary*

@@ -145,61 +145,120 @@ POST /api/v1/rounds
 
 ---
 
-### Coach Ask (RAG)
+### Coach Chat (Conversational)
 
 ```
-POST /api/v1/coach/ask
+POST /api/v1/coach/chat
 ```
 
-**Request Body:** `CoachQuery`
+**Request Body:** `CoachChatRequest`
 
 ```json
 {
   "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "question": "Why am I missing so many fairways?"
+  "conversation_id": 42,
+  "message": "How can I work on my putting?",
+  "round_id": 123
 }
 ```
 
-**Response:** `CoachResponse`
+**Fields:**
+- `user_id` (required): Lowercase UUID
+- `conversation_id` (optional): Existing conversation ID. If omitted, creates new conversation.
+- `message` (required): User's message text
+- `round_id` (optional): Links conversation to a specific round for context
+
+**Response:** `CoachChatResponse`
 
 ```json
 {
-  "answer": "Your driver is costing you 2.3 strokes per round...",
+  "conversation_id": 42,
+  "message": {
+    "role": "assistant",
+    "content": "Based on your round stats...",
+    "created_at": "2026-07-14T14:30:00Z"
+  },
+  "answer": "Your putting...",
   "confidence": 4,
   "key_insights": [
-    "Driving SG: -1.2 over last 5 rounds",
-    "Missed fairways cluster on holes 3, 7, 12 (all dogleg left)"
+    "Putting: 36 putts per round, 4 above average",
+    "GIR: 22% — missing greens leads to more putts"
   ],
   "drill_recommendations": [
     {
       "priority": 1,
-      "focus_area": "driver accuracy",
-      "drill_name": "Alignment Stick Gate",
-      "instructions": "Place two alignment sticks 3 feet apart, 10 yards ahead. Hit 10 drivers through the gate.",
-      "expected_outcome": "8/10 drives through the gate"
-    }
-  ],
-  "context": [
-    {
-      "shot_id": "...",
-      "narrative": "Driver: 402 yards to pin, tee shot → to 145 yards to pin, in rough",
-      "sg_value": -0.45,
-      ...
+      "focus_area": "lag putting",
+      "drill_name": "Ladder Drill",
+      "instructions": "Place tees at 3, 6, 9, 12 feet. Putt to each distance without going past.",
+      "expected_outcome": "Consistent speed control from all distances"
     }
   ]
 }
 ```
 
 **Special Behavior:**
-- If player's most recent `handicap_index >= 25`, returns fundamentals redirect (no LLM call):
-  - Answer focuses on: consistent contact, basic chipping, two-putting
-  - Confidence: 5
-  - Drills: 7-Iron Consistency, Chip-and-Putt
-- **Trend-based coaching:** Coach now prioritizes recent `round_stats` over individual shot retrieval when `hole_data` is available. Response includes trend insights like "Your SG Putting is -1.2 over last 3 rounds."
+- **Data-source-aware:** Coach builds prompt from inventory of available data (round_stats, shot_embeddings, reflections). Only includes sections when data exists.
+- **Confidence scaling:** 1-5 based on data richness, not handicap:
+  - 1: 1-2 rounds (asks follow-up question)
+  - 2: 3-5 rounds (early trends)
+  - 3: 5+ rounds, no shots (scorecard patterns)
+  - 4: With shot data (specific patterns)
+  - 5: Rich shot + trend data (strong evidence)
+- **No 25+ HCP gate:** Handicap used for baseline comparison only, never blocks LLM.
+- **Conversational:** When data is thin, coach asks one focused follow-up question and incorporates the player's answer.
 
 **Errors:**
-- `500` — Embedding failure
-- `502` — Supabase RPC failure or LLM generation failure
+- `500` — Embedding failure or LLM generation failure
+- `404` — Conversation not found (invalid conversation_id)
+
+---
+
+### Coach Conversations List
+
+```
+GET /api/v1/coach/conversations?user_id={uuid}&limit={limit}
+```
+
+**Query Parameters:**
+- `user_id` (required): Lowercase UUID
+- `limit` (optional, default 10): Max conversations to return
+
+**Response:**
+
+```json
+{
+  "conversations": [
+    {
+      "id": 42,
+      "title": "Round at Rawls — Jul 8",
+      "round_id": 123,
+      "message_count": 8,
+      "last_message_at": "2026-07-08T14:30:00Z",
+      "preview": "How'd I play? → Your putting..."
+    }
+  ]
+}
+```
+
+---
+
+### Coach Conversation Messages
+
+```
+GET /api/v1/coach/conversations/{id}/messages
+```
+
+**Response:**
+
+```json
+{
+  "conversation_id": 42,
+  "messages": [
+    {"role": "user", "content": "How'd I play?", "created_at": "2026-07-08T14:00:00Z"},
+    {"role": "assistant", "content": "Your putting cost you...", "created_at": "2026-07-08T14:01:00Z"}
+  ]
+}
+```
 
 ---
 
@@ -394,12 +453,25 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 | `total_putts` | int | ❌ | Total putts |
 | `shots` | ShotModel[] | ❌ | Full shot-by-shot data |
 
-### CoachQuery (Input)
+### CoachChatRequest (Input)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `user_id` | string | ✅ | Lowercase UUID |
-| `question` | string | ✅ | Player's question |
+| `conversation_id` | int | ❌ | Existing conversation ID |
+| `message` | string | ✅ | Player's message |
+| `round_id` | int | ❌ | Link to specific round |
+
+### CoachChatResponse (Output)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `conversation_id` | int | Conversation ID |
+| `message` | object | Assistant message with role, content, created_at |
+| `answer` | string | Natural language coaching response |
+| `confidence` | int | 1–5 (1=thin data, 5=rich data) |
+| `key_insights` | string[] | 2–4 bullet points |
+| `drill_recommendations` | DrillRecommendation[] | Ordered by priority |
 
 ### CoachResponse (Output)
 
@@ -513,6 +585,7 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 |------|---------|--------|
 | 2026-05-22 | 0.5.0 | Added reflections, SG aggregation, score variance |
 | 2026-06-16 | 0.6.0 | Added course search, simple scorecard mode (`hole_data`), `courses` table |
+| 2026-07-14 | 0.7.0 | Replaced `/coach/ask` with `/coach/chat`. Added conversational endpoints (`/conversations`, `/conversations/{id}/messages`). Removed 25+ HCP gate. Added data-source-aware prompt architecture. |
 | 2026-06-29 | 0.6.0 | Fixed: `round_id` is Int (BIGSERIAL), not String. `round_stats` is array in history response. Added `avg_putts_per_hole`, `avg_score_to_par` columns. |
 
 ---

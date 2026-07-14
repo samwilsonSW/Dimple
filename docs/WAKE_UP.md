@@ -9,7 +9,7 @@
 ## Current Status (Auto-Updated)
 
 **Last Updated:** 2026-07-08
-**API Version:** 0.6.0
+**API Version:** 0.7.0
 **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 
 ### What's Working
@@ -18,14 +18,15 @@
 - ✅ Round History List — scrollable cards with SG chips, pull-to-refresh
 - ✅ Round ingestion (`POST /api/v1/rounds`) — full shot-by-shot + simple scorecard
 - ✅ Round stats calculation — SG Putting, SG Approach, GIR%, Fairway%
-- ✅ AI Coach (`POST /api/v1/coach/ask`) — RAG with reflections, SG aggregation, trend-based coaching
+- ✅ AI Coach (`POST /api/v1/coach/chat`) — conversational, data-source-aware, trend-based coaching
 - ✅ Vector search (local embeddings + Supabase pgvector)
 
 ### What's In Progress
-- 🔄 Duk on-device taste test (Sunday round) — validate core loop end-to-end
+- 🔄 Phase A: Backend coach rework — data inventory, conditional prompts, conversation persistence
+- 🔄 Phase B: Frontend chat UI — blocked on Phase A completion
 
 ### What's Blocked / Deferred
-- Coach prompt refinement — needs real scorecard data to tune
+- Conversational coach — Phase A in progress (Kanary), Phase B queued (Claude Code)
 - Submit idempotency — backlog (duplicate prevention on retry)
 - Swipe-to-delete in Round History — needs backend `DELETE /rounds/{id}`
 - Voice memo parsing — CANCELLED per Duk taste
@@ -81,6 +82,7 @@
 
 | Date | What Changed |
 |------|-------------|
+| 2026-07-14 | Coach Rework Spec v2 — conversational, data-source-aware architecture. Phase A backend in progress. |
 | 2026-07-08 | Docs refreshed. Core loop complete. Ready for production test. |
 | 2026-06-29 | PR #11 — round_id decode fix (String? → Int?). Migration 015 applied. |
 | 2026-06-29 | PR #10 — fix 500 on scorecard submit (shots=None guard). |
