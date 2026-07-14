@@ -125,7 +125,7 @@ Currently started manually (`uvicorn main:app`). Options:
 
 ### Q2: What domain for production?
 
-- `dimple.chokepointmonitor.com` — reuse existing domain (quick)
+- `dimple.chokepointmonitor.com` — reuse existing domain (quick) ⚠️ Chokepoint Monitor Render account deleted, domain may need reconfiguration
 - `api.dimple.golf` — buy/register new domain (cleaner branding, extra cost/hassle)
 - `dimple-<name>.cfargotunnel.com` — free Cloudflare subdomain (zero cost, less professional)
 
