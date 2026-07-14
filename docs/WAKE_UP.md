@@ -59,7 +59,7 @@
 ## How to Use This
 
 **If you're Kanary (OpenClaw):**
-- Read this, then API_CONTRACT.md, then TASK_BOARD.md
+- Read this, then API_CONTRACT.md, then TASK_BOARD.md, then AGENT_STATUS.md
 - Update this file when status changes
 - Add `[CC]` tasks to TASK_BOARD.md for Claude Code
 
