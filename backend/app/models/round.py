@@ -166,6 +166,52 @@ class CoachQuery(BaseModel):
     question: str
 
 
+class CoachChatRequest(BaseModel):
+    """Request model for conversational coach endpoint."""
+    user_id: str
+    conversation_id: Optional[int] = None
+    message: str
+    round_id: Optional[int] = None
+
+
+class Message(BaseModel):
+    """A single message in a conversation."""
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str
+    created_at: Optional[str] = None
+
+
+class CoachChatResponse(BaseModel):
+    """Response model for conversational coach endpoint."""
+    conversation_id: int
+    message: Message
+    answer: str = Field(..., description="Full natural-language coaching response")
+    confidence: int = Field(
+        ...,
+        ge=1,
+        le=5,
+        description="Confidence in the advice: 1=thin data, 5=rich data"
+    )
+    key_insights: List[str] = Field(
+        default_factory=list,
+        description="2-4 bullet-point insights extracted from the data"
+    )
+    drill_recommendations: List[DrillRecommendation] = Field(
+        default_factory=list,
+        description="Ordered list of drills to address identified issues"
+    )
+
+
+class ConversationSummary(BaseModel):
+    """Summary of a conversation for the list view."""
+    id: int
+    title: Optional[str] = None
+    round_id: Optional[int] = None
+    message_count: int = 0
+    last_message_at: Optional[str] = None
+    preview: Optional[str] = None
+
+
 class DrillRecommendation(BaseModel):
     priority: int = Field(..., description="Priority order: 1 = highest")
     focus_area: str = Field(..., description="e.g. '6-iron push', 'lag putting'")

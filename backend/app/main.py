@@ -5,7 +5,10 @@ from typing import List, Dict, Any
 from app.core.config import get_settings
 from app.core.baselines import get_baseline_for_handicap
 from app.core.scorecard_stats import calculate_round_stats
-from app.models.round import RoundPayload, CoachQuery, CoachResponse, ShotModel, DrillRecommendation, LIE_CODES, CLUB_CODES
+from app.models.round import (
+    RoundPayload, CoachQuery, CoachResponse, CoachChatRequest, CoachChatResponse,
+    Message, ConversationSummary, ShotModel, DrillRecommendation, LIE_CODES, CLUB_CODES
+)
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
 from app.services.llm import generate_coach_response, generate_structured_coach_response
@@ -16,7 +19,7 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="0.6.0",
+    version="0.7.0",
 )
 
 app.include_router(courses.router)
@@ -254,55 +257,120 @@ def ingest_round(payload: RoundPayload):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RAG COACH ENDPOINT
+# DATA INVENTORY
 # ──────────────────────────────────────────────────────────────────────────────
 
-@app.post("/api/v1/coach/ask", response_model=CoachResponse)
-def coach_ask(query: CoachQuery):
-    """
-    RAG-based AI Coach:
-    1. Embed the user's question locally
-    2. Retrieve top-5 similar shots via Supabase RPC (cosine similarity)
-    3. Build a prompt with retrieved context
-    4. Call Moonshot LLM to generate a coaching response
-    """
-    supabase = get_supabase()
-
-    # 1) Embed the question locally
+def build_data_inventory(supabase, user_id: str) -> Dict[str, Any]:
+    """Query what data exists for a player before building the coach prompt."""
+    inventory = {
+        "round_stats_count": 0,
+        "shot_embeddings_count": 0,
+        "reflections_count": 0,
+        "has_round_stats": False,
+        "has_trends": False,
+        "has_shots": False,
+        "has_reflections": False,
+    }
+    
     try:
-        query_vector = embed_text(query.question)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Local embedding failed: {str(e)}")
+        # Count round_stats
+        result = supabase.table("round_stats").select("id", count="exact").eq("user_id", user_id).execute()
+        inventory["round_stats_count"] = result.count or 0
+        inventory["has_round_stats"] = inventory["round_stats_count"] > 0
+        inventory["has_trends"] = inventory["round_stats_count"] >= 3
+    except Exception:
+        pass
+    
+    try:
+        # Count shot_embeddings
+        result = supabase.table("shot_embeddings").select("id", count="exact").eq("user_id", user_id).execute()
+        inventory["shot_embeddings_count"] = result.count or 0
+        inventory["has_shots"] = inventory["shot_embeddings_count"] > 0
+    except Exception:
+        pass
+    
+    try:
+        # Count reflections
+        result = supabase.table("rounds").select("id", count="exact").eq("user_id", user_id).not_.is_("reflection", "null").execute()
+        inventory["reflections_count"] = result.count or 0
+        inventory["has_reflections"] = inventory["reflections_count"] > 0
+    except Exception:
+        pass
+    
+    return inventory
 
-    # 2) Retrieve top-5 similar shots via RPC
+
+def fetch_round_stats_summary(supabase, user_id: str, limit: int = 3) -> str:
+    """Fetch recent round stats for the prompt."""
+    try:
+        result = supabase.table("round_stats").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
+        stats = result.data or []
+    except Exception:
+        return ""
+    
+    if not stats:
+        return ""
+    
+    lines = [f"Recent Round Stats (last {len(stats)} rounds):"]
+    for i, s in enumerate(stats, 1):
+        lines.append(
+            f"Round {i}: Score {s['total_score']}, GIR {s['gir_percentage']:.0%}, "
+            f"Fairway {s['fairway_percentage']:.0%}, Putts {s['total_putts']}, "
+            f"SG Putting {s['sg_putting']:+.1f}, SG Approach {s['sg_approach']:+.1f}"
+        )
+    return "\n".join(lines)
+
+
+def fetch_trend_summary(supabase, user_id: str) -> str:
+    """Fetch trend summary using get_trend_summary from scorecard_stats."""
+    try:
+        result = supabase.table("round_stats").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(5).execute()
+        stats = result.data or []
+    except Exception:
+        return ""
+    
+    if len(stats) < 3:
+        return ""
+    
+    from app.core.scorecard_stats import get_trend_summary
+    trends = get_trend_summary(stats, num_rounds=5)
+    
+    if not trends:
+        return ""
+    
+    lines = [
+        f"Trends (last {trends['rounds_analyzed']} rounds):",
+        f"  Avg GIR: {trends['avg_gir_percentage']:.0%}",
+        f"  Avg Fairway: {trends['avg_fairway_percentage']:.0%}",
+        f"  Avg Putts: {trends['avg_putts_per_round']:.1f}",
+        f"  Avg SG Putting: {trends['avg_sg_putting']:+.2f}",
+        f"  Avg SG Approach: {trends['avg_sg_approach']:+.2f}",
+        f"  Trend: {trends['trend_direction']}",
+    ]
+    return "\n".join(lines)
+
+
+def fetch_shot_history(supabase, user_id: str, question: str) -> tuple:
+    """Fetch similar shots via RAG. Returns (shots, sg_summary)."""
+    try:
+        query_vector = embed_text(question)
+    except Exception:
+        return [], "No SG data available."
+    
     try:
         rpc_result = supabase.rpc(
             "match_shots",
             {
                 "query_embedding": query_vector,
-                "match_user_id": query.user_id,
+                "match_user_id": user_id,
                 "match_count": 5,
             }
         ).execute()
         similar_shots = rpc_result.data or []
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Supabase vector search failed: {str(e)}")
-
-    # 3) Retrieve recent round reflections for this player
-    try:
-        reflections_result = supabase.table("rounds").select("round_date, reflection").eq("user_id", query.user_id).not_.is_("reflection", "null").order("round_date", desc=True).limit(3).execute()
-        reflections = reflections_result.data or []
     except Exception:
-        reflections = []
-
-    reflection_text = ""
-    if reflections:
-        reflection_blocks = []
-        for r in reflections:
-            reflection_blocks.append(f"Round ({r['round_date']}): {r['reflection']}")
-        reflection_text = "\n".join(reflection_blocks)
-
-    # 4) Calculate SG category totals from retrieved shots
+        return [], "No SG data available."
+    
+    # Calculate SG categories
     sg_categories = {"driving": 0.0, "approach": 0.0, "short_game": 0.0, "putting": 0.0}
     category_counts = {"driving": 0, "approach": 0, "short_game": 0, "putting": 0}
 
@@ -314,15 +382,11 @@ def coach_ask(query: CoachQuery):
         distance = shot.get("before_distance_yards")
         hole_num = shot.get("hole_number")
         
-        # Per Broadie's "Every Shot Counts":
-        # Inside 50 yards and not on green = short game
-        # Tee shots on par 3 = approach, par 4/5 = driving
         if lie == "green":
             cat = "putting"
         elif distance is not None and distance < 50:
             cat = "short_game"
         elif lie == "tee":
-            # Par 3 tee shots are approach, not driving
             from app.core.baselines import is_par3
             cat = "approach" if is_par3(hole_num) else "driving"
         elif lie in ("fairway", "rough", "sand", "hazard"):
@@ -338,122 +402,258 @@ def coach_ask(query: CoachQuery):
         if count > 0:
             sg_summary_lines.append(f"{cat}: {total:+.2f} SG ({count} shots)")
     sg_summary = "\n".join(sg_summary_lines) if sg_summary_lines else "No SG data available."
-
-    # 5) Assemble context for the LLM
-    context_blocks = []
-    for i, shot in enumerate(similar_shots, 1):
-        sg_note = f" (SG: {shot['sg_value']:+.2f})" if shot.get('sg_value') is not None else ""
-        context_blocks.append(
-            f"Shot {i}: {shot['narrative']}{sg_note}"
-        )
-
-    context_text = "\n".join(context_blocks) if context_blocks else "No relevant shot history found."
-
-    # Check for 25+ handicap — gently redirect to fundamentals
-    try:
-        player_result = supabase.table("rounds").select("handicap_index").eq("user_id", query.user_id).order("round_date", desc=True).limit(1).execute()
-        player_handicap = player_result.data[0]["handicap_index"] if player_result.data else 0
-    except Exception:
-        player_handicap = 0
     
-    if player_handicap >= 25:
-        return CoachResponse(
-            answer=(
-                "At a 25+ handicap, the fastest path to improvement is building solid fundamentals: "
-                "consistent contact, basic chipping, and two-putting. Once you're regularly breaking 100, "
-                "we can dive into detailed analytics. For now, focus on: (1) hitting the range 2x/week, "
-                "(2) short game practice, and (3) playing with purpose — pick one thing to work on each round."
-            ),
-            confidence=5,
-            key_insights=[
-                "25+ handicap: fundamentals over analytics",
-                "Focus: consistent contact, basic chipping, two-putting",
-                "Goal: regularly break 100 before detailed analysis",
-            ],
-            drill_recommendations=[
-                DrillRecommendation(
-                    priority=1,
-                    focus_area="fundamentals",
-                    drill_name="7-Iron Consistency",
-                    instructions="Hit 20 7-irons focusing on solid contact. Don't worry about distance, just crisp strikes.",
-                    expected_outcome="Clean contact 80% of the time",
-                ),
-                DrillRecommendation(
-                    priority=2,
-                    focus_area="short game",
-                    drill_name="Chip-and-Putt",
-                    instructions="Drop 5 balls 10 yards off the green. Chip to hole, then putt. Repeat 3 times.",
-                    expected_outcome="Get up-and-down 2 out of 5 times",
-                ),
-            ],
-            context=[],
-        )
+    return similar_shots, sg_summary
 
-    system_prompt = (
-        "You are Dimple Coach, an expert golf coach. You have access to the player's "
-        "historical shot data with Strokes Gained values. Be direct, data-driven, and actionable. "
-        "Ground every insight in the provided context. If you don't have enough data, say so."
-    )
 
-    # Retrieve recent round stats for trend-based coaching
+def fetch_reflections(supabase, user_id: str, limit: int = 3) -> str:
+    """Fetch recent round reflections."""
     try:
-        stats_result = supabase.table("round_stats").select("*").eq("user_id", query.user_id).order("created_at", desc=True).limit(5).execute()
-        recent_stats = stats_result.data or []
+        result = supabase.table("rounds").select("round_date, reflection").eq("user_id", user_id).not_.is_("reflection", "null").order("round_date", desc=True).limit(limit).execute()
+        reflections = result.data or []
     except Exception:
-        recent_stats = []
+        return ""
+    
+    if not reflections:
+        return ""
+    
+    blocks = []
+    for r in reflections:
+        blocks.append(f"Round ({r['round_date']}): {r['reflection']}")
+    return "\n".join(blocks)
 
-    stats_text = ""
-    if recent_stats:
-        stats_lines = ["Recent Round Stats (last " + str(len(recent_stats)) + " rounds):"]
-        for i, s in enumerate(recent_stats[:3], 1):
-            stats_lines.append(
-                f"Round {i}: Score {s['total_score']}, GIR {s['gir_percentage']:.0%}, "
-                f"Fairway {s['fairway_percentage']:.0%}, Putts {s['total_putts']}, "
-                f"SG Putting {s['sg_putting']:+.1f}, SG Approach {s['sg_approach']:+.1f}"
-            )
-        stats_text = "\n".join(stats_lines)
 
-    user_prompt_parts = [
-        f"Player Question: {query.question}",
-        "",
-    ]
+def build_system_prompt(inventory: Dict[str, Any]) -> str:
+    """Build adaptive system prompt based on data inventory."""
+    parts = ["You are Dimple Coach, an expert golf coach."]
+    
+    # Data disclaimer
+    if inventory["has_round_stats"] and inventory["has_shots"]:
+        parts.append(
+            f"This player has {inventory['round_stats_count']} rounds of scorecard data "
+            f"(scores, GIR, fairways, putts) and {inventory['shot_embeddings_count']} shots with detailed tracking."
+        )
+    elif inventory["has_round_stats"]:
+        parts.append(
+            f"This player has {inventory['round_stats_count']} rounds of scorecard data "
+            f"(scores, GIR, fairways, putts). No detailed shot tracking yet."
+        )
+    elif inventory["has_shots"]:
+        parts.append(
+            f"This player has {inventory['shot_embeddings_count']} shots with detailed tracking. "
+            f"No scorecard rounds logged yet."
+        )
+    else:
+        parts.append("This player has no rounds logged yet.")
+    
+    if inventory["has_shots"]:
+        parts.append("You have access to historical shot data with Strokes Gained values.")
+    
+    parts.append(
+        "You are conversational and direct. When you don't have enough data for a definitive "
+        "answer, ask the player one focused follow-up question to fill the gap. Use their "
+        "answer along with any available stats to give actionable advice. Never give generic "
+        "fundamentals advice unless the player explicitly asks for it."
+    )
+    
+    parts.append(
+        "Be data-driven and actionable. Ground every insight in the provided context. "
+        "If you don't have enough data, say so and suggest what to track."
+    )
+    
+    return "\n\n".join(parts)
 
-    if stats_text:
-        user_prompt_parts.extend([
-            stats_text,
+
+def build_user_prompt(
+    question: str,
+    inventory: Dict[str, Any],
+    round_stats_text: str,
+    trend_text: str,
+    shot_history_text: str,
+    sg_summary: str,
+    reflection_text: str,
+    conversation_history: List[Dict[str, str]] = None,
+) -> str:
+    """Build user prompt with conditional sections."""
+    parts = [f"Player Question: {question}", ""]
+    
+    # Conversation history
+    if conversation_history:
+        parts.append("Previous messages in this conversation:")
+        for msg in conversation_history:
+            role = "Player" if msg["role"] == "user" else "Coach"
+            parts.append(f"{role}: {msg['content']}")
+        parts.append("")
+    
+    # Scorecard summary
+    if round_stats_text and inventory["has_round_stats"]:
+        parts.extend([round_stats_text, ""])
+    
+    # Trends
+    if trend_text and inventory["has_trends"]:
+        parts.extend([trend_text, ""])
+    
+    # Shot history and SG (only if shots exist)
+    if inventory["has_shots"]:
+        parts.extend([
+            "Strokes Gained Summary (from retrieved shots):",
+            sg_summary,
+            "",
+            "Relevant Shot History:",
+            shot_history_text,
             "",
         ])
-
-    user_prompt_parts.extend([
-        "Strokes Gained Summary (from retrieved shots):",
-        sg_summary,
-        "",
-        "Relevant Shot History:",
-        context_text,
-    ])
-
-    if reflection_text:
-        user_prompt_parts.extend([
-            "",
+    
+    # Reflections
+    if reflection_text and inventory["has_reflections"]:
+        parts.extend([
             "Player's Recent Round Reflections:",
             reflection_text,
+            "",
         ])
+    
+    # Instruction
+    parts.append(
+        "Based on the available data above, provide a helpful coaching response. "
+        "Prioritize trend-based insights from the round stats when available. "
+        "Connect quantitative data with qualitative observations. "
+        "If data is limited, ask one focused follow-up question to better understand the player's situation."
+    )
+    
+    return "\n".join(parts)
 
-    user_prompt_parts.extend([
-        "",
-        "Based on the round stats, shot history, SG summary, and any player reflections above, provide a helpful coaching response. "
-        "Prioritize trend-based insights from the round stats when available. Connect quantitative data with qualitative observations."
-    ])
 
-    user_prompt = "\n".join(user_prompt_parts)
+def determine_confidence(inventory: Dict[str, Any]) -> int:
+    """Determine confidence level based on data richness."""
+    if inventory["has_shots"] and inventory["has_trends"]:
+        return 5  # Rich shot + trend data
+    elif inventory["has_shots"]:
+        return 4  # With shot data
+    elif inventory["has_trends"]:
+        return 3  # 5+ rounds, no shots
+    elif inventory["has_round_stats"]:
+        return 2  # 1-2 rounds
+    else:
+        return 1  # No data
 
-    # 4) Call Moonshot LLM (structured JSON)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONVERSATIONAL COACH ENDPOINT
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/v1/coach/chat", response_model=CoachChatResponse)
+def coach_chat(request: CoachChatRequest):
+    """
+    Conversational AI Coach:
+    1. Build data inventory (what data exists for this player)
+    2. Fetch conditional data (round stats, trends, shots, reflections)
+    3. Build adaptive prompt based on inventory
+    4. Call Moonshot LLM to generate coaching response
+    5. Save conversation and messages to database
+    """
+    supabase = get_supabase()
+    
+    # 1) Get or create conversation
+    conversation_id = request.conversation_id
+    if conversation_id:
+        # Verify conversation exists and belongs to user
+        try:
+            conv_result = supabase.table("conversations").select("*").eq("id", conversation_id).eq("user_id", request.user_id).single().execute()
+            if not conv_result.data:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch conversation: {str(e)}")
+    else:
+        # Create new conversation
+        try:
+            title = "Coach Chat"
+            if request.round_id:
+                # Get round info for title
+                round_result = supabase.table("rounds").select("course, round_date").eq("id", request.round_id).single().execute()
+                if round_result.data:
+                    course_name = round_result.data.get("course", {}).get("name", "Unknown Course")
+                    round_date = round_result.data.get("round_date", "")
+                    title = f"Round at {course_name} — {round_date}"
+            
+            conv_result = supabase.table("conversations").insert({
+                "user_id": request.user_id,
+                "round_id": request.round_id,
+                "title": title,
+            }).execute()
+            conversation_id = conv_result.data[0]["id"]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
+    
+    # 2) Fetch conversation history (last 6 messages)
+    conversation_history = []
+    try:
+        msgs_result = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=True).limit(6).execute()
+        if msgs_result.data:
+            # Reverse to get chronological order
+            conversation_history = [
+                {"role": m["role"], "content": m["content"]} 
+                for m in reversed(msgs_result.data)
+            ]
+    except Exception:
+        pass
+    
+    # 3) Save user message
+    try:
+        supabase.table("messages").insert({
+            "conversation_id": conversation_id,
+            "role": "user",
+            "content": request.message,
+        }).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save message: {str(e)}")
+    
+    # 4) Build data inventory
+    inventory = build_data_inventory(supabase, request.user_id)
+    
+    # 5) Fetch conditional data
+    round_stats_text = fetch_round_stats_summary(supabase, request.user_id) if inventory["has_round_stats"] else ""
+    trend_text = fetch_trend_summary(supabase, request.user_id) if inventory["has_trends"] else ""
+    
+    similar_shots = []
+    sg_summary = "No SG data available."
+    shot_history_text = "No relevant shot history found."
+    
+    if inventory["has_shots"]:
+        similar_shots, sg_summary = fetch_shot_history(supabase, request.user_id, request.message)
+        context_blocks = []
+        for i, shot in enumerate(similar_shots, 1):
+            sg_note = f" (SG: {shot['sg_value']:+.2f})" if shot.get('sg_value') is not None else ""
+            context_blocks.append(f"Shot {i}: {shot['narrative']}{sg_note}")
+        shot_history_text = "\n".join(context_blocks) if context_blocks else "No relevant shot history found."
+    
+    reflection_text = fetch_reflections(supabase, request.user_id) if inventory["has_reflections"] else ""
+    
+    # 6) Build prompts
+    system_prompt = build_system_prompt(inventory)
+    user_prompt = build_user_prompt(
+        question=request.message,
+        inventory=inventory,
+        round_stats_text=round_stats_text,
+        trend_text=trend_text,
+        shot_history_text=shot_history_text,
+        sg_summary=sg_summary,
+        reflection_text=reflection_text,
+        conversation_history=conversation_history,
+    )
+    
+    # 7) Call LLM
     try:
         structured = generate_structured_coach_response(system_prompt, user_prompt)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"LLM generation failed: {str(e)}")
-
-    # Build drill objects from parsed JSON
+    
+    # 8) Build response
+    answer = structured.get("answer", "")
+    confidence = structured.get("confidence", determine_confidence(inventory))
+    key_insights = structured.get("key_insights", [])
+    
     drills = []
     for d in structured.get("drill_recommendations", []):
         drills.append(DrillRecommendation(
@@ -463,14 +663,102 @@ def coach_ask(query: CoachQuery):
             instructions=d.get("instructions", ""),
             expected_outcome=d.get("expected_outcome", ""),
         ))
-
-    return CoachResponse(
-        answer=structured.get("answer", ""),
-        confidence=structured.get("confidence", 3),
-        key_insights=structured.get("key_insights", []),
+    
+    # 9) Save assistant message
+    try:
+        supabase.table("messages").insert({
+            "conversation_id": conversation_id,
+            "role": "assistant",
+            "content": answer,
+        }).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save assistant message: {str(e)}")
+    
+    # 10) Return response
+    return CoachChatResponse(
+        conversation_id=conversation_id,
+        message=Message(
+            role="assistant",
+            content=answer,
+        ),
+        answer=answer,
+        confidence=confidence,
+        key_insights=key_insights,
         drill_recommendations=drills,
-        context=similar_shots,
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONVERSATION LIST ENDPOINTS
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/v1/coach/conversations")
+def get_conversations(user_id: str, limit: int = 10):
+    """List conversations for a user."""
+    supabase = get_supabase()
+    
+    try:
+        result = supabase.table("conversations").select("*").eq("user_id", user_id).order("updated_at", desc=True).limit(limit).execute()
+        conversations = result.data or []
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch conversations: {str(e)}")
+    
+    # Get message counts and previews
+    summaries = []
+    for conv in conversations:
+        conv_id = conv["id"]
+        try:
+            msgs_result = supabase.table("messages").select("*").eq("conversation_id", conv_id).order("created_at", desc=True).limit(2).execute()
+            msgs = msgs_result.data or []
+            msg_count = len(msgs)
+            preview = msgs[-1]["content"][:50] + "..." if msgs else ""
+        except Exception:
+            msg_count = 0
+            preview = ""
+        
+        summaries.append(ConversationSummary(
+            id=conv_id,
+            title=conv.get("title"),
+            round_id=conv.get("round_id"),
+            message_count=msg_count,
+            last_message_at=conv.get("updated_at"),
+            preview=preview,
+        ))
+    
+    return {"conversations": summaries}
+
+
+@app.get("/api/v1/coach/conversations/{conversation_id}/messages")
+def get_conversation_messages(conversation_id: int, user_id: str):
+    """Get messages for a conversation."""
+    supabase = get_supabase()
+    
+    # Verify conversation belongs to user
+    try:
+        conv_result = supabase.table("conversations").select("*").eq("id", conversation_id).eq("user_id", user_id).single().execute()
+        if not conv_result.data:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify conversation: {str(e)}")
+    
+    try:
+        result = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", asc=True).execute()
+        messages = result.data or []
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch messages: {str(e)}")
+    
+    return {
+        "conversation_id": conversation_id,
+        "messages": [
+            Message(
+                role=m["role"],
+                content=m["content"],
+                created_at=m.get("created_at"),
+            ) for m in messages
+        ],
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
