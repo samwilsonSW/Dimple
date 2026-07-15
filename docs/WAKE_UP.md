@@ -8,10 +8,10 @@
 
 ## Current Status (Auto-Updated)
 
-**Last Updated:** 2026-07-14
+**Last Updated:** 2026-07-15
 **API Version:** 0.7.0
 **Branch:** Kanary (working branch — main is release, Kanary is where we build)
-**Live API:** `https://evidence-dialogue-chronicle-officers.trycloudflare.com` (tunnel; rotates)
+**Live API:** `https://dimple-api.chokepointmonitor.com` (named tunnel; stable)
 
 ### What's Working
 - ✅ Course search backend + SwiftUI frontend (`/api/v1/courses/search`, `/api/v1/courses/{id}`)
