@@ -575,7 +575,9 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 | Risk | Mitigation | Owner |
 |------|-----------|-------|
 | `match_shots` case-sensitive on `user_id` | Frontend lowercases all UUIDs before sending | Claude Code |
-| LLM thinking-mode latency > iOS 60s timeout | Monitor response times; consider streaming or async pattern | Kanary |
+| LLM thinking-mode latency > iOS default 60s timeout | **Observed 2026-07-14:** fresh reply ~27s, grows with history; >60s cases showed as tunnel `context canceled` (client-side cancel). Frontend `CoachService.send()` timeout raised 60s→180s. Longer-term: streaming/async. | Claude Code (client) / Kanary (streaming) |
+| Backend→Supabase intermittent timeout on `/coach/chat` | **Open (2026-07-14):** the `.single()` conversation-verify (`main.py:561`, runs on every follow-up message) intermittently returns `500 {"detail":"Failed to fetch conversation: [Errno 60] Operation timed out"}`. Add retry/backoff + connection reuse; make verify non-fatal; confirm Supabase not throttled. See `AGENT_STATUS.md`. | Kanary |
+| `GET /coach/conversations/{id}/messages` requires `user_id` query param | Contract now documents it (frontend sends it); missing → 422 | Kanary |
 | Course API rate limit (50 req/day) | Cache aggressively in Supabase `courses` table | Kanary |
 | 25+ handicap players get fundamentals redirect | Backend handles automatically; frontend shows same response shape | Kanary |
 | Duplicate rounds on retry/submit | **Backlog:** Add `client_round_id` + unique constraint | Kanary |

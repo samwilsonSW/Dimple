@@ -58,7 +58,7 @@ struct NewRoundView: View {
                     onSubmitted: { path.append(RoundRoute.summary) }
                 )
             case .summary:
-                RoundSummaryView(stats: vm.result, courseName: vm.courseName, onDone: finishRound)
+                RoundSummaryView(stats: vm.result, courseName: vm.courseName, roundID: vm.roundID, onDone: finishRound)
             }
         } else {
             // VM lost (shouldn't happen) — bail back to the search root.

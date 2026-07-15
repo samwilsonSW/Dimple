@@ -6,7 +6,7 @@ import Supabase
 /// lowercased user_id (match_shots is case-sensitive — see API_CONTRACT).
 final class RoundService {
     static let shared = RoundService()
-    private let baseURL = "http://localhost:8000"
+    private let baseURL = "https://evidence-dialogue-chronicle-officers.trycloudflare.com"
 
     /// Builds the payload (injecting user_id + totals) and POSTs to /api/v1/rounds.
     func submit(

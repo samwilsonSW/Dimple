@@ -37,6 +37,7 @@ final class ScorecardViewModel {
     var isSubmitting = false
     var submitError: String?
     var result: RoundStats?
+    var roundID: Int?      // rounds.id from the submit response — links post-submit coach chat
 
     enum Nine { case front, back }
     var selectedNine: Nine
@@ -210,6 +211,7 @@ final class ScorecardViewModel {
                 holes: payloadHoles
             )
             result = resp.round_stats
+            roundID = resp.round_id
             isSubmitting = false
             DraftRoundStore.shared.clear()
             return true

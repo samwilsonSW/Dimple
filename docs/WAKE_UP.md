@@ -8,9 +8,10 @@
 
 ## Current Status (Auto-Updated)
 
-**Last Updated:** 2026-07-08
+**Last Updated:** 2026-07-14
 **API Version:** 0.7.0
 **Branch:** Kanary (working branch — main is release, Kanary is where we build)
+**Live API:** `https://evidence-dialogue-chronicle-officers.trycloudflare.com` (tunnel; rotates)
 
 ### What's Working
 - ✅ Course search backend + SwiftUI frontend (`/api/v1/courses/search`, `/api/v1/courses/{id}`)
@@ -22,11 +23,11 @@
 - ✅ Vector search (local embeddings + Supabase pgvector)
 
 ### What's In Progress
-- ✅ Phase A: Backend coach rework — COMPLETE (tested, working)
-- 🔄 Phase B: Frontend chat UI — ready for Claude Code
+- ✅ Phase A: Backend coach rework — COMPLETE (tested, working; messages 502 fixed `ff423aa`)
+- 🧪 Phase B: Frontend chat UI — BUILT, build green, all 3 endpoints verified live. In Duk simulator taste test → merge to Kanary on approval.
 
 ### What's Blocked / Deferred
-- Conversational coach — Phase A in progress (Kanary), Phase B queued (Claude Code)
+- Conversational coach — Phase A complete (Kanary), Phase B built & in simulator test (Claude Code)
 - Submit idempotency — backlog (duplicate prevention on retry)
 - Swipe-to-delete in Round History — needs backend `DELETE /rounds/{id}`
 - Voice memo parsing — CANCELLED per Duk taste
@@ -82,7 +83,8 @@
 
 | Date | What Changed |
 |------|-------------|
-| 2026-07-14 | Coach Rework Spec v2 — conversational, data-source-aware architecture. Phase A backend in progress. |
+| 2026-07-14 | Phase B frontend built (chat UI, conversation list, entry points). Build green; endpoints verified live. Backend messages 502 (`asc=` kwarg) fixed + restarted. In Duk simulator test. |
+| 2026-07-14 | Coach Rework Spec v2 — conversational, data-source-aware architecture. Phase A backend complete. |
 | 2026-07-08 | Docs refreshed. Core loop complete. Ready for production test. |
 | 2026-06-29 | PR #11 — round_id decode fix (String? → Int?). Migration 015 applied. |
 | 2026-06-29 | PR #10 — fix 500 on scorecard submit (shots=None guard). |

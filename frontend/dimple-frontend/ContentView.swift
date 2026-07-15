@@ -15,13 +15,11 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            NavigationStack {
-                CoachView()
-            }
-            .tag(Tab.coach)
-            .tabItem {
-                Label("Coach", systemImage: "bubble.left.and.text.bubble.right")
-            }
+            ConversationListView()
+                .tag(Tab.coach)
+                .tabItem {
+                    Label("Coach", systemImage: "bubble.left.and.text.bubble.right")
+                }
 
             NewRoundView()
                 .tag(Tab.newRound)

@@ -35,17 +35,19 @@
 
 **Spec:** `docs/COACH_REWORK_SPEC.md`
 
-### Phase B: Frontend Coach Chat (Claude Code) — NOT STARTED
+### Phase B: Frontend Coach Chat (Claude Code) ✅ BUILT — in simulator test
 
-- [ ] **[CC] Replace coach endpoint** — switch from `/coach/ask` to `/coach/chat`
-- [ ] **[CC] `CoachChatView`** — bubble-style chat interface
-- [ ] **[CC] `ConversationListView`** — list of past conversations
-- [ ] **[CC] Message threading** — send `conversation_id` for multi-turn
-- [ ] **[CC] Entry points** — Round History "Ask Coach", Coach tab, post-submit
-- [ ] **[CC] Loading/error states** — handle coach response latency
-- [ ] **[CC] Accessibility** — VoiceOver for chat bubbles
+- [x] **[CC] Replace coach endpoint** — switched `/coach/ask` → `/coach/chat` (old `ask()` removed)
+- [x] **[CC] `CoachChatView`** — bubble-style chat (confidence bar, key-insights, expandable drill cards, typing indicator, scroll-to-bottom, inline error + Retry)
+- [x] **[CC] `ConversationListView`** — Coach tab root; past conversations + New Chat
+- [x] **[CC] Message threading** — sends `conversation_id` for multi-turn
+- [x] **[CC] Entry points** — Coach tab, Round detail "Ask Coach", post-submit summary (both thread `round_id`)
+- [x] **[CC] Loading/error states** — send + history load both covered
+- [x] **[CC] Accessibility** — VoiceOver labels on all bubbles, drills, conversation cards
 
-**Blocked on:** Phase A backend completion
+**Status:** `xcodebuild` green (generic iOS Simulator). All 3 endpoints verified live 200 against the new tunnel. Awaiting Duk simulator taste test → merge to Kanary on approval.
+**Verified/fixed during integration:** messages endpoint requires `user_id` (contract updated); backend 502 (`asc=` kwarg) root-caused → Kanary fixed (`ff423aa`) → restarted → re-verified 200.
+**Note:** work is uncommitted in the working tree (Duk merges). Base URL swapped to `evidence-dialogue-chronicle-officers.trycloudflare.com`.
 **Spec:** `docs/COACH_REWORK_SPEC.md` (Phase B section)
 
 ---
@@ -73,6 +75,8 @@
 
 ## Blocked / Deferred
 
+- **🐞 Coach chat unreliable on follow-up messages (backend / Kanary)** — Open, found 2026-07-14 in simulator test. Backend→Supabase intermittently times out on the `.single()` conversation-verify (`main.py:561`, runs on every message after the first) → either `500 {"detail":"...[Errno 60] Operation timed out"}` or (when >60s) an app-side cancel seen as tunnel `context canceled`. Fix directions: retry/backoff + connection reuse on Supabase calls, make verify non-fatal, confirm Supabase not throttled. Frontend already bumped `send()` timeout 60s→180s (handles the slow-success case; not the 500s). Full write-up in `AGENT_STATUS.md`.
+- **Coach chat long-wait UX** — Deferred per Duk (2026-07-14). Optional friendlier "coach is taking longer than usual…" copy for long LLM waits. Streaming/async is the real long-term fix (Kanary).
 - **Submit idempotency** — Backlog. Add `client_round_id` + unique constraint to prevent duplicates on spotty networks.
 - **Swipe-to-delete in Round History** — Needs backend `DELETE /rounds/{id}` endpoint first.
 - **Voice memo parsing** — CANCELLED per Duk taste call.
@@ -86,10 +90,10 @@
 **Goal:** Conversational coach working end-to-end.
 
 **Required:**
-- [ ] Kanary: Phase A backend complete (new endpoints, migration applied)
-- [ ] [CC] Phase B frontend complete (chat UI, conversation list)
-- [ ] Duk: Test on device, confirm conversational flow feels right
-- [ ] Duk: Merge Kanary → main
+- [x] Kanary: Phase A backend complete (new endpoints, migration applied, messages 502 fixed)
+- [x] [CC] Phase B frontend complete (chat UI, conversation list) — build green, endpoints verified
+- [ ] Duk: Test on simulator, confirm conversational flow feels right
+- [ ] Duk: Merge Phase B → Kanary (then Kanary → main)
 
 ---
 
