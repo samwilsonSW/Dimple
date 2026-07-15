@@ -16,18 +16,22 @@
 
 ## Active
 
-### Phase A: Backend Coach Rework (Kanary) — IN PROGRESS
+### Phase A: Backend Coach Rework (Kanary) ✅ COMPLETE
 
-- [ ] **Data inventory builder** — count queries for round_stats, shot_embeddings, reflections
-- [ ] **Conditional prompt assembly** — only include sections when data exists
-- [ ] **Remove 25+ HCP gate** — replace with confidence scaling based on data richness
-- [ ] **Wire `get_trend_summary()`** — use scorecard trends when no shot data
-- [ ] **Skip RAG when no shots** — save compute and latency
-- [ ] **New `POST /api/v1/coach/chat` endpoint** — replaces `/api/v1/coach/ask`
-- [ ] **Conversation persistence** — `conversations` and `messages` tables
-- [ ] **New GET endpoints** — `/conversations`, `/conversations/{id}/messages`
-- [ ] **Update API contract** — v0.7.0
-- [ ] **Migration 016** — create conversations + messages tables
+- [x] **Data inventory builder** — count queries for round_stats, shot_embeddings, reflections
+- [x] **Conditional prompt assembly** — only include sections when data exists
+- [x] **Remove 25+ HCP gate** — replace with confidence scaling based on data richness
+- [x] **Wire `get_trend_summary()`** — use scorecard trends when no shot data
+- [x] **Skip RAG when no shots** — save compute and latency
+- [x] **New `POST /api/v1/coach/chat` endpoint** — replaces `/api/v1/coach/ask`
+- [x] **Conversation persistence** — `conversations` and `messages` tables
+- [x] **New GET endpoints** — `/conversations`, `/conversations/{id}/messages`
+- [x] **Update API contract** — v0.7.0
+- [x] **Migration 017** — create conversations + messages tables
+
+**Known Issues:**
+- Confidence score: LLM overrides data-richness calculation. Under observation per Duk's preference.
+- Tone: Direct/honest (not sugar-coated). Duk approves current intensity.
 
 **Spec:** `docs/COACH_REWORK_SPEC.md`
 

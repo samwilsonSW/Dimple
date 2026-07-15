@@ -22,8 +22,8 @@
 - ✅ Vector search (local embeddings + Supabase pgvector)
 
 ### What's In Progress
-- 🔄 Phase A: Backend coach rework — data inventory, conditional prompts, conversation persistence
-- 🔄 Phase B: Frontend chat UI — blocked on Phase A completion
+- ✅ Phase A: Backend coach rework — COMPLETE (tested, working)
+- 🔄 Phase B: Frontend chat UI — ready for Claude Code
 
 ### What's Blocked / Deferred
 - Conversational coach — Phase A in progress (Kanary), Phase B queued (Claude Code)

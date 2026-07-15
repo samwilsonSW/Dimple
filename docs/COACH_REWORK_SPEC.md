@@ -25,7 +25,7 @@ This spec replaces the existing coach endpoint with a **data-source-aware, conve
 
 ---
 
-## Phase A: Backend Changes (Kanary)
+## Phase A: Backend Changes (Kanary) ✅ COMPLETE
 
 ### 1. Data Inventory
 
@@ -185,7 +185,7 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at A
 
 ---
 
-## Phase B: Frontend Changes (Claude Code)
+## Phase B: Frontend Changes (Claude Code) 🔄 NOT STARTED
 
 ### 1. New Views
 
@@ -267,18 +267,28 @@ CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at A
 
 ---
 
+## Known Issues / Monitoring
+
+### Confidence Score Debate
+**Status:** Under observation  
+**Context:** With 1 round, `determine_confidence()` returns 2 (data-richness based), but LLM returns 4 (signal-strength based). Duk prefers LLM's judgment — if the data is clear (e.g., -25.92 SG approach), confidence should reflect that clarity, not just data volume.  
+**Decision:** Keep LLM confidence for now. Monitor if users find it misleading.  
+**Revisit if:** Users with 1 round get overconfident advice that doesn't match reality.
+
+---
+
 ## Success Criteria
 
-- [ ] 25+ HCP gate removed
-- [ ] Scorecard-only users get stats-based coaching (not generic fundamentals)
-- [ ] Prompt sections only appear when data exists
-- [ ] System prompt honestly describes available data
-- [ ] Confidence reflects data richness, not handicap
-- [ ] RAG skipped when no shot data exists (save compute)
-- [ ] Coach asks follow-up questions when data is thin
-- [ ] Coach incorporates player self-reported insights into advice
-- [ ] Conversation history persisted in database
-- [ ] Frontend chat UI supports multi-turn conversations
+- [x] 25+ HCP gate removed
+- [x] Scorecard-only users get stats-based coaching (not generic fundamentals)
+- [x] Prompt sections only appear when data exists
+- [x] System prompt honestly describes available data
+- [x] Confidence reflects signal strength (LLM judgment), not just data volume
+- [x] RAG skipped when no shot data exists (save compute)
+- [x] Coach asks follow-up questions when data is thin
+- [x] Coach incorporates player self-reported insights into advice
+- [x] Conversation history persisted in database
+- [ ] Frontend chat UI supports multi-turn conversations (Phase B)
 
 ---
 

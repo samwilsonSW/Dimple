@@ -10,10 +10,19 @@
 ## Claude Code — Current Task
 
 - **Task:** Phase B — Conversational Coach Chat UI
-- **Status:** Blocked — waiting on Kanary Phase A backend completion
+- **Status:** Ready to start — Kanary Phase A backend complete and tested
 - **Branch:** Kanary (working branch — main is release, Kanary is where we build)
 - **Last completed:** Round History List (PR #9, merged 2026-06-27)
 - **Next up:** Implement `CoachChatView`, `ConversationListView`, message threading per `docs/COACH_REWORK_SPEC.md`
+
+**Backend Status (from Kanary):**
+- ✅ `POST /api/v1/coach/chat` — working, tested with real data
+- ✅ `GET /api/v1/coach/conversations` — ready
+- ✅ `GET /api/v1/coach/conversations/{id}/messages` — ready
+- ✅ Data-source-aware prompts (no hallucinations when data is thin)
+- ✅ Conversation persistence in database
+- ⚠️ Confidence score: LLM overrides data-richness calc. Under observation.
+- ⚠️ iOS connection issue (July 9) still open — may block testing
 
 ## Progress — Round History List (COMPLETE)
 
