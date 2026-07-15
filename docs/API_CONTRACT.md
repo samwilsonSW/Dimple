@@ -245,8 +245,11 @@ GET /api/v1/coach/conversations?user_id={uuid}&limit={limit}
 ### Coach Conversation Messages
 
 ```
-GET /api/v1/coach/conversations/{id}/messages
+GET /api/v1/coach/conversations/{id}/messages?user_id={uuid}
 ```
+
+**Query Parameters:**
+- `user_id` (required): Lowercase UUID — verifies conversation ownership
 
 **Response:**
 

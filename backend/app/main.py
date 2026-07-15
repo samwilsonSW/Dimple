@@ -744,7 +744,7 @@ def get_conversation_messages(conversation_id: int, user_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to verify conversation: {str(e)}")
     
     try:
-        result = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", asc=True).execute()
+        result = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at").execute()
         messages = result.data or []
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch messages: {str(e)}")
