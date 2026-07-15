@@ -232,7 +232,7 @@ def ingest_round(payload: RoundPayload):
                 course_slope=payload.tee_box.slope if payload.tee_box else None,
             )
             stats_row = {
-                "round_id": round_id,
+                "round_id": str(round_id),
                 "user_id": payload.user_id,
                 **stats,
             }
