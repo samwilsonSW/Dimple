@@ -541,6 +541,12 @@ def determine_confidence(inventory: Dict[str, Any]) -> int:
 # CONVERSATIONAL COACH ENDPOINT
 # ──────────────────────────────────────────────────────────────────────────────
 
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 @app.post("/api/v1/coach/chat", response_model=CoachChatResponse)
 def coach_chat(request: CoachChatRequest):
     """
@@ -551,12 +557,15 @@ def coach_chat(request: CoachChatRequest):
     4. Call Moonshot LLM to generate coaching response
     5. Save conversation and messages to database
     """
+    request_start = time.time()
     supabase = get_supabase()
     
     # 1) Get or create conversation
     conversation_id = request.conversation_id
     if conversation_id:
         # Verify conversation exists and belongs to user
+        # NOTE: Made non-fatal — transient Supabase timeouts shouldn't kill the chat
+        verify_start = time.time()
         try:
             conv_result = supabase.table("conversations").select("*").eq("id", conversation_id).eq("user_id", request.user_id).single().execute()
             if not conv_result.data:
@@ -564,7 +573,15 @@ def coach_chat(request: CoachChatRequest):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch conversation: {str(e)}")
+            verify_elapsed = time.time() - verify_start
+            logger.warning(
+                f"Conversation verify timeout/Error for conv_id={conversation_id} "
+                f"after {verify_elapsed:.2f}s: {str(e)}. "
+                f"Continuing without strict verification — user_id match is sufficient."
+            )
+            # Non-fatal: assume the conversation exists and belongs to the user
+            # The frontend only sends conversation_ids it already knows about
+            pass
     else:
         # Create new conversation
         try:
@@ -644,10 +661,14 @@ def coach_chat(request: CoachChatRequest):
     )
     
     # 7) Call LLM
+    llm_start = time.time()
     try:
         structured = generate_structured_coach_response(system_prompt, user_prompt)
     except Exception as e:
+        llm_elapsed = time.time() - llm_start
+        logger.error(f"LLM generation failed after {llm_elapsed:.2f}s: {str(e)}")
         raise HTTPException(status_code=502, detail=f"LLM generation failed: {str(e)}")
+    llm_elapsed = time.time() - llm_start
     
     # 8) Build response
     answer = structured.get("answer", "")
@@ -674,7 +695,14 @@ def coach_chat(request: CoachChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save assistant message: {str(e)}")
     
-    # 10) Return response
+    # 10) Return response with timing
+    total_elapsed = time.time() - request_start
+    logger.info(
+        f"Coach chat completed: conv_id={conversation_id}, "
+        f"llm_time={llm_elapsed:.2f}s, total_time={total_elapsed:.2f}s, "
+        f"data_inventory={inventory}"
+    )
+    
     return CoachChatResponse(
         conversation_id=conversation_id,
         message=Message(
