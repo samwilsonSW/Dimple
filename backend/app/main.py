@@ -12,6 +12,7 @@ from app.models.round import (
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
 from app.services.llm import generate_coach_response, generate_structured_coach_response
+from app.services.title_generator import generate_title
 from app.routers import courses
 
 settings = get_settings()
@@ -625,6 +626,20 @@ def coach_chat(request: CoachChatRequest):
         }).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save message: {str(e)}")
+    
+    # 3b) Generate title for new conversations (fire-and-forget, non-blocking)
+    is_new_conversation = request.conversation_id is None
+    if is_new_conversation:
+        try:
+            generated_title = generate_title(request.message)
+            if generated_title:
+                supabase.table("conversations").update({
+                    "title": generated_title
+                }).eq("id", conversation_id).execute()
+                logger.info(f"Generated title for conv {conversation_id}: '{generated_title}'")
+        except Exception as e:
+            # Non-fatal: title generation failure shouldn't break the chat
+            logger.warning(f"Title generation failed for conv {conversation_id}: {e}")
     
     # 4) Build data inventory
     inventory = build_data_inventory(supabase, request.user_id)
