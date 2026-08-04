@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 from pathlib import Path
 
@@ -15,11 +15,14 @@ class Settings(BaseSettings):
     golfcourseapi_key: str = ""  # Optional - course search works without it
     environment: str = "development"
 
-    class Config:
-        env_file = str(ENV_FILE)
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore"
+    # Pydantic-settings priority: env vars > .env file > defaults
+    # This means system environment variables override .env values
+    model_config = SettingsConfigDict(
+        env_file=str(ENV_FILE),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 @lru_cache()
