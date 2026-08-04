@@ -1,20 +1,39 @@
 # Dimple Task Board
 
 > **Owner:** Kanary (OpenClaw)  
-> **Updated:** 2026-07-14  
+> **Updated:** 2026-08-03  
 > **Rule:** Claude Code reads this file, picks up tasks marked `[CC]`, and reports completion to Duk. Kanary never assigns tasks to Duk directly — only surfaces blockers that need taste.
 
 ---
 
-## Current State (2026-07-14)
+## Current State (2026-08-03)
 
-**Core loop is functional:** Course search → Scorecard entry → Submit → Round History display.
+**Core loop is functional:** Course search → Scorecard entry → Submit → Round History display → Coach chat.
 
-**Next major feature:** Conversational Coach (Phase A + Phase B)
+**Recently completed:** Coach reliability fixes (pooling, timeout, non-fatal verify). Auto-chat-titles built.
+
+**Next major feature:** Manual Course Entry (spec drafted, pending Duk review)
 
 ---
 
 ## Active
+
+### Manual Course Entry (Spec Phase)
+
+**Status:** Spec drafted in `feature/manual-course-entry`, pending Duk review  
+**Problem:** GolfCourseAPI.com gaps block round entry (e.g., Creek Course at Meadowbrook GC)  
+**Solution:** Lightweight fallback — user enters course name, city, state, holes, par values. Scorecard-only mode, full coach access.
+
+**Next steps:**
+- [ ] Duk reviews `docs/MANUAL_COURSE_ENTRY_SPEC.md`
+- [ ] Kanary: Update API_CONTRACT.md with manual_course field
+- [ ] Kanary: Write migration 019 (manual_course JSONB column)
+- [ ] Kanary: Modify POST /api/v1/rounds to accept manual_course
+- [ ] [CC] Build ManualCourseEntryView (form + par editor)
+- [ ] [CC] Modify CourseSearchView to show "Enter manually" fallback
+- [ ] [CC] Modify ScorecardEntryView for manual courses (no yardage, no shot mode)
+
+---
 
 ### Phase A: Backend Coach Rework (Kanary) ✅ COMPLETE
 
@@ -35,7 +54,7 @@
 
 **Spec:** `docs/COACH_REWORK_SPEC.md`
 
-### Phase B: Frontend Coach Chat (Claude Code) ✅ BUILT — in simulator test
+### Phase B: Frontend Coach Chat (Claude Code) ✅ COMPLETE — merged to Kanary
 
 - [x] **[CC] Replace coach endpoint** — switched `/coach/ask` → `/coach/chat` (old `ask()` removed)
 - [x] **[CC] `CoachChatView`** — bubble-style chat (confidence bar, key-insights, expandable drill cards, typing indicator, scroll-to-bottom, inline error + Retry)
