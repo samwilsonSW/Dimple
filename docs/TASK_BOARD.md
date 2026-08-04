@@ -1,118 +1,138 @@
 # Dimple Task Board
 
 > **Owner:** Kanary (OpenClaw)  
-> **Updated:** 2026-08-03  
+> **Updated:** 2026-08-04  
 > **Rule:** Claude Code reads this file, picks up tasks marked `[CC]`, and reports completion to Duk. Kanary never assigns tasks to Duk directly — only surfaces blockers that need taste.
 
 ---
 
-## Current State (2026-08-03)
+## Current State (2026-08-04)
+
+**Target: v1.0.0** — Three features, then ship. Merge Kanary → main, tag release.
 
 **Core loop is functional:** Course search → Scorecard entry → Submit → Round History display → Coach chat.
 
-**Recently completed:** Coach reliability fixes (pooling, timeout, non-fatal verify). Auto-chat-titles built.
+---
 
-**Next major feature:** Manual Course Entry (spec drafted, pending Duk review)
+## v1.0.0 Roadmap
+
+| # | Feature | Status | Owner | Spec |
+|---|---------|--------|-------|------|
+| 1 | Manual Course Entry | Ready to build | Kanary backend, [CC] frontend | `docs/MANUAL_COURSE_ENTRY_SPEC.md` |
+| 2 | Coach Loading Indicator | Ready to build | [CC] frontend | `docs/FRONTEND_LOADING_INDICATOR_SPEC.md` |
+| 3 | Course Selection Flow Bug | Ready to build | [CC] frontend | `docs/COURSE_SELECTION_FLOW_BUG_SPEC.md` |
 
 ---
 
 ## Active
 
-### Manual Course Entry (Spec Phase)
+### [CC] 1. Manual Course Entry — Frontend
 
-**Status:** Spec drafted in `feature/manual-course-entry`, pending Duk review  
-**Problem:** GolfCourseAPI.com gaps block round entry (e.g., Creek Course at Meadowbrook GC)  
-**Solution:** Lightweight fallback — user enters course name, city, state, holes, par values. Scorecard-only mode, full coach access.
+**Status:** Spec approved by Duk. Ready for implementation.  
+**Depends on:** Backend endpoint (Kanary will build in parallel or first)
 
-**Next steps:**
-- [ ] Duk reviews `docs/MANUAL_COURSE_ENTRY_SPEC.md`
-- [ ] Kanary: Update API_CONTRACT.md with manual_course field
-- [ ] Kanary: Write migration 019 (manual_course JSONB column)
-- [ ] Kanary: Modify POST /api/v1/rounds to accept manual_course
-- [ ] [CC] Build ManualCourseEntryView (form + par editor)
-- [ ] [CC] Modify CourseSearchView to show "Enter manually" fallback
-- [ ] [CC] Modify ScorecardEntryView for manual courses (no yardage, no shot mode)
+**What to build:**
+- [ ] `ManualCourseEntryView` — form for name, city, state, hole count, par per hole
+- [ ] Tee info optional (rating/slope if known)
+- [ ] "Enter manually" button on `CourseSearchView` (when no results or always visible)
+- [ ] Modify `ScorecardEntryView` for manual courses (no yardage, no shot mode)
+- [ ] Wire to backend `POST /api/v1/courses/manual`
 
----
-
-### Phase A: Backend Coach Rework (Kanary) ✅ COMPLETE
-
-- [x] **Data inventory builder** — count queries for round_stats, shot_embeddings, reflections
-- [x] **Conditional prompt assembly** — only include sections when data exists
-- [x] **Remove 25+ HCP gate** — replace with confidence scaling based on data richness
-- [x] **Wire `get_trend_summary()`** — use scorecard trends when no shot data
-- [x] **Skip RAG when no shots** — save compute and latency
-- [x] **New `POST /api/v1/coach/chat` endpoint** — replaces `/api/v1/coach/ask`
-- [x] **Conversation persistence** — `conversations` and `messages` tables
-- [x] **New GET endpoints** — `/conversations`, `/conversations/{id}/messages`
-- [x] **Update API contract** — v0.7.0
-- [x] **Migration 017** — create conversations + messages tables
-
-**Known Issues:**
-- Confidence score: LLM overrides data-richness calculation. Under observation per Duk's preference.
-- Tone: Direct/honest (not sugar-coated). Duk approves current intensity.
-
-**Spec:** `docs/COACH_REWORK_SPEC.md`
-
-### Phase B: Frontend Coach Chat (Claude Code) ✅ COMPLETE — merged to Kanary
-
-- [x] **[CC] Replace coach endpoint** — switched `/coach/ask` → `/coach/chat` (old `ask()` removed)
-- [x] **[CC] `CoachChatView`** — bubble-style chat (confidence bar, key-insights, expandable drill cards, typing indicator, scroll-to-bottom, inline error + Retry)
-- [x] **[CC] `ConversationListView`** — Coach tab root; past conversations + New Chat
-- [x] **[CC] Message threading** — sends `conversation_id` for multi-turn
-- [x] **[CC] Entry points** — Coach tab, Round detail "Ask Coach", post-submit summary (both thread `round_id`)
-- [x] **[CC] Loading/error states** — send + history load both covered
-- [x] **[CC] Accessibility** — VoiceOver labels on all bubbles, drills, conversation cards
-
-**Status:** `xcodebuild` green (generic iOS Simulator). All 3 endpoints verified live 200 against the new tunnel. Awaiting Duk simulator taste test → merge to Kanary on approval.
-**Verified/fixed during integration:** messages endpoint requires `user_id` (contract updated); backend 502 (`asc=` kwarg) root-caused → Kanary fixed (`ff423aa`) → restarted → re-verified 200.
-**Note:** work is uncommitted in the working tree (Duk merges). Base URL swapped to `evidence-dialogue-chronicle-officers.trycloudflare.com`.
-**Spec:** `docs/COACH_REWORK_SPEC.md` (Phase B section)
+**Spec:** `docs/MANUAL_COURSE_ENTRY_SPEC.md`
 
 ---
 
-## Recently Fixed
+### Kanary 1. Manual Course Entry — Backend
 
-- ✅ **500 on scorecard submit** (PR #10) — `payload.shots` was `None` for scorecard-only submits
-- ✅ **round_id type mismatch** (PR #11) — frontend expected `String?`, backend sent `Int`
-- ✅ **Blank stats** — migration 015 applied (`avg_putts_per_hole`, `avg_score_to_par` columns)
+**Status:** Ready to build  
+**What to build:**
+- [ ] `POST /api/v1/courses/manual` endpoint
+- [ ] Migration 019 — `manual_courses` table or flag in existing schema
+- [ ] Update `POST /api/v1/rounds` to accept manual course data
+- [ ] Update `API_CONTRACT.md`
+
+**Blocked by:** Nothing. Can start immediately.
+
+---
+
+### [CC] 2. Coach Loading Indicator
+
+**Status:** Spec drafted, ready for implementation  
+**What:** Visual feedback while coach is "thinking"
+
+**Acceptance:**
+- [ ] Optimistic message insertion (user message appears instantly)
+- [ ] Animated "typing" indicator (pulsing dots or "Coach is thinking…")
+- [ ] Retry UI on failure (not generic "Network connection was lost")
+- [ ] State preserved on app background/foreground
+
+**Files:** `CoachChatView.swift`, `CoachService.swift`, message models  
+**Spec:** `docs/FRONTEND_LOADING_INDICATOR_SPEC.md`
+
+---
+
+### [CC] 3. Course Selection Flow Bug Fix
+
+**Status:** Spec drafted, ready for investigation + fix  
+**Bug:** After selecting tees, user gets kicked back to course search. Must re-select course, then jumps to hole 1.
+
+**Investigate:**
+- [ ] Add logging to `NewRoundView` path changes
+- [ ] Check for `presentationMode.dismiss()` in `CourseTeePickerView` / `RoundSetupView`
+- [ ] Check if parent view recreation resets `NavigationStack`
+- [ ] Confirm `RoundCourseSelection` Hashable conformance
+
+**Fix:**
+- [ ] Remove any explicit dismiss calls
+- [ ] Stabilize `NavigationStack` identity if needed
+- [ ] Defer `scorecardVM` assignment if it triggers recreation
+
+**Files:** `NewRoundView.swift`, `CourseTeePickerView.swift`, `RoundSetupView.swift`, `ContentView.swift`  
+**Spec:** `docs/COURSE_SELECTION_FLOW_BUG_SPEC.md`
+
+---
+
+## Recently Completed
+
+- ✅ Coach reliability fixes (pooling, timeout, non-fatal verify) — merged to Kanary
+- ✅ Auto-chat-titles — built, ready to merge
+- ✅ Manual course entry spec — drafted, Duk approved
 
 ---
 
 ## Done (Last 30 Days)
 
+- 2026-08-03: Coach reliability fixes merged to Kanary
+- 2026-07-31: Auto-chat-titles feature built
+- 2026-07-14: Phase B frontend built (chat UI, conversation list)
 - 2026-07-14: Coach Rework Spec v2 — conversational, data-source-aware architecture
-- 2026-06-29: PR #11 — fix round_id decode (String? → Int?). Migration 015 applied.
-- 2026-06-29: PR #10 — fix 500 on scorecard submit (shots=None guard).
-- 2026-06-27: PR #9 — Round History List merged to Kanary.
-- 2026-06-25: PR #8 — Scorecard Entry View merged to Kanary.
-- 2026-06-24: Supabase key rotation complete (legacy keys disabled).
-- 2026-06-22: Course Search UI merged to Kanary.
-- 2026-06-17: Course search backend built (GolfCourseAPI.com integration).
+- 2026-06-29: PR #11 — fix round_id decode
+- 2026-06-29: PR #10 — fix 500 on scorecard submit
+- 2026-06-27: PR #9 — Round History List merged to Kanary
+- 2026-06-25: PR #8 — Scorecard Entry View merged to Kanary
+- 2026-06-24: Supabase key rotation complete
+- 2026-06-22: Course Search UI merged to Kanary
+- 2026-06-17: Course search backend built
 
 ---
 
-## Blocked / Deferred
+## Blocked / Deferred (Post-v1.0.0)
 
-- **🐞 Coach chat unreliable on follow-up messages (backend / Kanary)** — Open, found 2026-07-14 in simulator test. Backend→Supabase intermittently times out on the `.single()` conversation-verify (`main.py:561`, runs on every message after the first) → either `500 {"detail":"...[Errno 60] Operation timed out"}` or (when >60s) an app-side cancel seen as tunnel `context canceled`. Fix directions: retry/backoff + connection reuse on Supabase calls, make verify non-fatal, confirm Supabase not throttled. Frontend already bumped `send()` timeout 60s→180s (handles the slow-success case; not the 500s). Full write-up in `AGENT_STATUS.md`.
-- **Coach chat long-wait UX** — Deferred per Duk (2026-07-14). Optional friendlier "coach is taking longer than usual…" copy for long LLM waits. Streaming/async is the real long-term fix (Kanary).
-- **Submit idempotency** — Backlog. Add `client_round_id` + unique constraint to prevent duplicates on spotty networks.
-- **Swipe-to-delete in Round History** — Needs backend `DELETE /rounds/{id}` endpoint first.
-- **Voice memo parsing** — CANCELLED per Duk taste call.
-- **Quick round mode** — CANCELLED per Duk taste call.
-- **Enhanced scorecard fields** (miss direction) — Future enhancement for richer trend data.
+- **Submit idempotency** — Backlog. Add `client_round_id` + unique constraint.
+- **Swipe-to-delete in Round History** — Needs backend `DELETE /rounds/{id}`.
+- **Voice memo parsing** — CANCELLED per Duk taste.
+- **Quick round mode** — CANCELLED per Duk taste.
+- **Enhanced scorecard fields** (miss direction) — Future enhancement.
 
 ---
 
-## Merge Criteria (to main)
+## v1.0.0 Release Checklist
 
-**Goal:** Conversational coach working end-to-end.
-
-**Required:**
-- [x] Kanary: Phase A backend complete (new endpoints, migration applied, messages 502 fixed)
-- [x] [CC] Phase B frontend complete (chat UI, conversation list) — build green, endpoints verified
-- [ ] Duk: Test on simulator, confirm conversational flow feels right
-- [ ] Duk: Merge Phase B → Kanary (then Kanary → main)
+- [ ] All three features merged to Kanary
+- [ ] Duk tests on device
+- [ ] Update README.md for v1.0.0
+- [ ] Merge Kanary → main
+- [ ] Tag `v1.0.0`
 
 ---
 
@@ -128,4 +148,4 @@
 
 ---
 
-*Last updated: 2026-07-14 by Kanary*
+*Last updated: 2026-08-04 by Kanary*
