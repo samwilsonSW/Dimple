@@ -20,11 +20,16 @@
   this URL was still committed on `Kanary`). Swapped all 4 → the stable named tunnel
   `https://dimple-api.chokepointmonitor.com` (verified live, 200). **Nothing
   connected before this.**
-- ✅ **Feature #2 (Coach loading indicator).** Was ~80% already built (optimistic
-  user bubble, typing indicator, inline retry all pre-existed). Added the missing
-  piece: `CoachError` classification in `CoachService` → friendly copy for
-  timeout / connection-lost / offline / 500, replacing the raw
-  "Network connection was lost" string. Needs Duk taste test.
+- ⚠️ **Feature #2 (Coach loading indicator) — PARTIAL, indicator PARKED per Duk.**
+  Shipped: `CoachError` classification in `CoachService` → friendly copy for
+  timeout / connection-lost / offline / 500 (replaces raw "Network connection was
+  lost"). **Known bug:** the pre-existing "Analyzing your game…" typing indicator
+  does **not** render at runtime — confirmed on-device by Duk (zero indicator on
+  new *and* existing chats, even after a clean build). The request itself works
+  (Duk got a confidence-4 answer), so `isSending` is true the whole wait but the
+  `typingBubble` branch isn't drawing — a view/rendering issue, not a request
+  failure. Debug logging (`COACHLOG`) was added then reverted; tree is clean.
+  **Deprioritized by Duk — do not spend energy here right now.**
 
 **In progress (NOT committed — working tree only):**
 - 🟡 **Bug #3 (course-selection kickback).** Instrumented `NewRoundView` with
@@ -48,6 +53,12 @@
   `API_CONTRACT.md` — that seam is yours. Frontend is scoped and ready.
 - **FYI (no contract change):** tonight's frontend commits change no request/response
   shape — just the base URL (not in the contract) and client-side error copy.
+- ⏱️ **Coach latency is a UX problem (your lane).** Measured live 2026-08-05:
+  "Where am I losing strokes?" took **1m35s** (curl of `/coach/chat` earlier: ~14s
+  for a zero-data reply). This is the LLM thinking-mode latency the contract already
+  flagged. 95s of dead air is rough — it makes a working loading indicator more
+  important later, but the real fix is backend (streaming / async / faster path).
+  Surfacing per the plan: latency is taste-bearing.
 
 **Backend Status (verified live against the new tunnel):**
 - ✅ `POST /api/v1/coach/chat` — verified 200, response shape matches models (zero-data fallback exercised: confidence 1, follow-up question, no drills)
