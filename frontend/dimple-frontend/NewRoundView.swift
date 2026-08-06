@@ -61,8 +61,12 @@ struct NewRoundView: View {
                 RoundSummaryView(stats: vm.result, courseName: vm.courseName, roundID: vm.roundID, onDone: finishRound)
             }
         } else {
-            // VM lost (shouldn't happen) — bail back to the search root.
-            Color.clear.onAppear { path = NavigationPath() }
+            // VM not ready for this frame. Show a neutral placeholder rather than
+            // resetting the path to root: a destructive reset here surfaced to the
+            // user as being "kicked back to course search" (bug #3). Once
+            // scorecardVM is set on a later frame the correct destination renders.
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
