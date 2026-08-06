@@ -7,13 +7,47 @@
 
 ---
 
-## Claude Code — Current Task
+## Claude Code — Current Task (2026-08-05 — v1.0.0 push)
 
-- **Task:** Phase B — Conversational Coach Chat UI
-- **Status:** ✅ Built, build green (xcodebuild, generic iOS Simulator). Awaiting Duk on-device taste test.
-- **Branch:** Kanary (working branch — main is release, Kanary is where we build)
-- **Last completed:** Phase B chat UI (2026-07-14)
-- **API base URL:** swapped all 4 services → `https://evidence-dialogue-chronicle-officers.trycloudflare.com` (per Duk, 2026-07-14). Uncommitted.
+- **Task:** v1.0.0 — three features in one night (with Duk on-device testing).
+- **Working branch:** `feature/v1-frontend-fixes` (off `Kanary`) → PR into `Kanary`,
+  Duk merges. Per Chrollo plan: features land via PRs into Kanary, no racing the branch.
+- **Build:** green (xcodebuild, generic iOS Simulator) after every change below.
+
+**Committed on `feature/v1-frontend-fixes` (pushed):**
+- 🔴→🟢 **Base URL fixed.** All 4 services pointed at a dead ephemeral tunnel
+  (`evidence-dialogue-chronicle-officers.trycloudflare.com` — DNS no longer resolves;
+  this URL was still committed on `Kanary`). Swapped all 4 → the stable named tunnel
+  `https://dimple-api.chokepointmonitor.com` (verified live, 200). **Nothing
+  connected before this.**
+- ✅ **Feature #2 (Coach loading indicator).** Was ~80% already built (optimistic
+  user bubble, typing indicator, inline retry all pre-existed). Added the missing
+  piece: `CoachError` classification in `CoachService` → friendly copy for
+  timeout / connection-lost / offline / 500, replacing the raw
+  "Network connection was lost" string. Needs Duk taste test.
+
+**In progress (NOT committed — working tree only):**
+- 🟡 **Bug #3 (course-selection kickback).** Instrumented `NewRoundView` with
+  `NAVLOG` tracing (DEBUG-only) + hardened the one destructive line: the
+  `routeView` fallback no longer resets the nav path to root when the scorecard VM
+  is momentarily nil (that reset == the "kicked back to search" symptom). Held out
+  of the commit until a simulator run + `NAVLOG` console paste confirms the fix;
+  debug logging will be stripped before it lands.
+
+**Deferred per Duk:**
+- 📋 **Feature #1 (Manual Course Entry).** Backend not shipped (verified live
+  OpenAPI: no `/courses/manual`, no `manual_course` on `RoundPayload`). Wrote
+  `docs/MANUAL_COURSE_ENTRY_BACKEND_CONTRACT.md` — the exact contract Kanary needs
+  (recommends embedding `manual_course` in `POST /rounds`, no new endpoint).
+  Frontend build waits on Kanary shipping the backend half.
+
+### Kanary — action needed (contract is yours; I'm proposing, not editing)
+- **`API_CONTRACT.md` — Manual Course Entry:** fold in the shape from
+  `docs/MANUAL_COURSE_ENTRY_BACKEND_CONTRACT.md` (or pick an alternative) and ship
+  the backend half to the live API. Per the Chrollo plan I did **not** edit
+  `API_CONTRACT.md` — that seam is yours. Frontend is scoped and ready.
+- **FYI (no contract change):** tonight's frontend commits change no request/response
+  shape — just the base URL (not in the contract) and client-side error copy.
 
 **Backend Status (verified live against the new tunnel):**
 - ✅ `POST /api/v1/coach/chat` — verified 200, response shape matches models (zero-data fallback exercised: confidence 1, follow-up question, no drills)
