@@ -8,7 +8,7 @@
 
 ## Version
 
-**API Version:** `0.6.0` (matches `backend/app/main.py`)
+**API Version:** `0.7.1` (matches `backend/app/main.py`)
 
 ---
 
@@ -59,6 +59,7 @@ POST /api/v1/rounds
 
 **Request Body:** `RoundPayload`
 
+**Option A: API Course (existing flow)**
 ```json
 {
   "user_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -105,11 +106,43 @@ POST /api/v1/rounds
 }
 ```
 
+**Option B: Manual Course (new — for courses not in GolfCourseAPI.com)**
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "round_date": "2026-08-06",
+  "course": {
+    "name": "Creek Course",
+    "city": "Lubbock",
+    "state": "TX"
+  },
+  "handicap_index": 13.2,
+  "manual_course": {
+    "holes": 18,
+    "par_values": [4,4,3,4,5,4,4,3,4,4,4,3,4,5,4,4,3,4]
+  },
+  "hole_data": [
+    {
+      "hole_number": 1,
+      "par": 4,
+      "score": 5,
+      "putts": 2,
+      "fairway": false,
+      "gir": false
+    }
+  ],
+  "total_score": 94,
+  "total_putts": 36
+}
+```
+
 **Field Rules:**
 - Either `shots` (full shot-by-shot) OR `hole_data` (simple scorecard) must be provided. Both may be provided.
 - `reflection`: optional, max ~500 chars. 3-5 sentences about the round.
 - `course_id`: optional. If provided, links to cached course from `/courses/search`.
 - `hole_data`: simple scorecard mode. Per-hole: score, putts, fairway (bool), GIR (bool).
+- `manual_course`: optional. User-entered course data when course is not in API. **Mutually exclusive with `course_id`/`tee_box`.**
+- When `manual_course` is provided: `shots` is rejected (no yardage data), and `strokes_over_under` uses the provided `par_values`.
 
 **Response:**
 ```json
@@ -142,6 +175,9 @@ POST /api/v1/rounds
 **Errors:**
 - `500` — Supabase insert failed or embedding failure
 - `422` — Validation error (invalid lie code, club code, etc.)
+- `422` — `manual_course` and `course_id` both provided (mutually exclusive)
+- `422` — `shots` provided with `manual_course` (no yardage data)
+- `422` — Invalid `par_values` (not 3-5, wrong count)
 
 ---
 
@@ -440,6 +476,13 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 | `rating` | float | ❌ | Course rating |
 | `slope` | int | ❌ | Slope rating |
 
+### ManualCourse (Input)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `holes` | int | ✅ | 9 or 18 |
+| `par_values` | int[] | ✅ | Per-hole par (3, 4, or 5). Count must equal `holes`. |
+
 ### RoundPayload (Input)
 
 | Field | Type | Required | Description |
@@ -449,12 +492,13 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 | `course` | object | ✅ | `{ name, city, state }` |
 | `handicap_index` | float | ✅ | 0.0–54.0 |
 | `reflection` | string | ❌ | 3-5 sentence round reflection |
-| `course_id` | string | ❌ | From `/courses/search` |
+| `course_id` | string | ❌ | From `/courses/search`. Mutually exclusive with `manual_course`. |
 | `tee_box` | TeeBox | ❌ | Selected tees |
 | `hole_data` | HoleResult[] | ❌ | Simple scorecard (alternative to shots) |
 | `total_score` | int | ❌ | Total strokes |
 | `total_putts` | int | ❌ | Total putts |
-| `shots` | ShotModel[] | ❌ | Full shot-by-shot data |
+| `manual_course` | ManualCourse | ❌ | User-entered course. Mutually exclusive with `course_id`. |
+| `shots` | ShotModel[] | ❌ | Full shot-by-shot data. Rejected if `manual_course` present. |
 
 ### CoachChatRequest (Input)
 
@@ -509,6 +553,7 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 - `course` (jsonb)
 - `handicap_index` (float)
 - `reflection` (text, nullable)
+- `manual_course` (jsonb, nullable) — **Added migration 019**
 - `created_at` (timestamp)
 
 **`shot_embeddings`**
@@ -592,6 +637,7 @@ GET /api/v1/rounds?user_id={uuid}&limit={limit}
 | 2026-06-16 | 0.6.0 | Added course search, simple scorecard mode (`hole_data`), `courses` table |
 | 2026-07-14 | 0.7.0 | Replaced `/coach/ask` with `/coach/chat`. Added conversational endpoints (`/conversations`, `/conversations/{id}/messages`). Removed 25+ HCP gate. Added data-source-aware prompt architecture. |
 | 2026-06-29 | 0.6.0 | Fixed: `round_id` is Int (BIGSERIAL), not String. `round_stats` is array in history response. Added `avg_putts_per_hole`, `avg_score_to_par` columns. |
+| 2026-08-06 | 0.7.1 | Added `manual_course` to `POST /api/v1/rounds`. Migration 019. Mutually exclusive with `course_id`. Rejects `shots`. |
 
 ---
 

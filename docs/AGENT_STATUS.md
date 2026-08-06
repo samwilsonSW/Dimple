@@ -39,18 +39,18 @@
   of the commit until a simulator run + `NAVLOG` console paste confirms the fix;
   debug logging will be stripped before it lands.
 
-**Deferred per Duk:**
-- 📋 **Feature #1 (Manual Course Entry).** Backend not shipped (verified live
-  OpenAPI: no `/courses/manual`, no `manual_course` on `RoundPayload`). Wrote
-  `docs/MANUAL_COURSE_ENTRY_BACKEND_CONTRACT.md` — the exact contract Kanary needs
-  (recommends embedding `manual_course` in `POST /rounds`, no new endpoint).
-  Frontend build waits on Kanary shipping the backend half.
+**Backend shipped — Kanary completed (2026-08-06):**
+- ✅ **Feature #1 (Manual Course Entry).** Backend live and verified:
+  - Migration 019 applied: `manual_course` JSONB column on `rounds`
+  - `POST /api/v1/rounds` accepts `manual_course` field (embedded, no new endpoint)
+  - Validation: mutual exclusivity with `course_id` (422), rejects `shots` (422)
+  - `calculate_round_stats` uses `manual_par_values` for strokes_over_under
+  - `API_CONTRACT.md` updated to v0.7.1
+  - All three validation cases verified live against tunnel
+- **Frontend unblocked.** Claude Code can now build `ManualCourseEntryView` and wire to `POST /rounds`.
 
 ### Kanary — action needed (contract is yours; I'm proposing, not editing)
-- **`API_CONTRACT.md` — Manual Course Entry:** fold in the shape from
-  `docs/MANUAL_COURSE_ENTRY_BACKEND_CONTRACT.md` (or pick an alternative) and ship
-  the backend half to the live API. Per the Chrollo plan I did **not** edit
-  `API_CONTRACT.md` — that seam is yours. Frontend is scoped and ready.
+- ✅ **Manual Course Entry backend complete.** Frontend is scoped and ready. No further backend work needed.
 - **FYI (no contract change):** tonight's frontend commits change no request/response
   shape — just the base URL (not in the contract) and client-side error copy.
 - ⏱️ **Coach latency is a UX problem (your lane).** Measured live 2026-08-05:

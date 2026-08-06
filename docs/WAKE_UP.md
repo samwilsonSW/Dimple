@@ -27,7 +27,7 @@
 - ✅ Phase B: Frontend chat UI — COMPLETE (merged to Kanary)
 - 🧪 Coach reliability fixes — connection pooling, non-fatal verify, 120s timeout (merged to Kanary)
 - 🧪 Auto-chat-titles — inline generation + background script (`feature/auto-chat-titles`, ready for merge)
-- 📋 Manual course entry — spec drafted (`feature/manual-course-entry`), pending Duk review
+- ✅ Manual course entry — backend complete (migration 019, `POST /rounds` accepts `manual_course`). Frontend ready to build.
 
 ### What's Blocked / Deferred
 - Submit idempotency — backlog (duplicate prevention on retry)

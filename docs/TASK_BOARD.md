@@ -28,15 +28,22 @@
 
 ### [CC] 1. Manual Course Entry — Frontend
 
-**Status:** Spec approved by Duk. Ready for implementation.  
-**Depends on:** Backend endpoint (Kanary will build in parallel or first)
+**Status:** Ready for implementation. Backend is live.  
+**Depends on:** ✅ Backend complete (Kanary shipped 2026-08-06)
 
 **What to build:**
+- [ ] `ManualCourse.swift` model + `manual_course` field on `RoundPayload`
 - [ ] `ManualCourseEntryView` — form for name, city, state, hole count, par per hole
-- [ ] Tee info optional (rating/slope if known)
+- [ ] `ManualCourseEntryViewModel` — validation, par calculation
 - [ ] "Enter manually" button on `CourseSearchView` (when no results or always visible)
 - [ ] Modify `ScorecardEntryView` for manual courses (no yardage, no shot mode)
-- [ ] Wire to backend `POST /api/v1/courses/manual`
+- [ ] Wire to backend `POST /api/v1/rounds` with `manual_course` field
+
+**Backend contract:**
+- Send `manual_course: { holes: 9|18, par_values: [3,4,5,...] }` in `RoundPayload`
+- Omit `course_id` and `tee_box`
+- Omit `shots` (shot-by-shot disabled)
+- Include `hole_data` as usual
 
 **Spec:** `docs/MANUAL_COURSE_ENTRY_SPEC.md`
 
@@ -44,14 +51,22 @@
 
 ### Kanary 1. Manual Course Entry — Backend
 
-**Status:** Ready to build  
-**What to build:**
-- [ ] `POST /api/v1/courses/manual` endpoint
-- [ ] Migration 019 — `manual_courses` table or flag in existing schema
-- [ ] Update `POST /api/v1/rounds` to accept manual course data
-- [ ] Update `API_CONTRACT.md`
+**Status:** ✅ Complete (2026-08-06)  
+**What was built:**
+- [x] Migration 019 — `manual_course` JSONB column on `rounds`
+- [x] `ManualCourse` model with validation (holes, par_values)
+- [x] Updated `POST /api/v1/rounds` to accept `manual_course` field
+- [x] Mutual exclusivity: `manual_course` ↔ `course_id` (422 if both)
+- [x] Reject `shots` when `manual_course` present (422)
+- [x] Updated `calculate_round_stats` to use `manual_par_values`
+- [x] Updated `API_CONTRACT.md` v0.7.1
+- [x] Deployed and verified live
 
-**Blocked by:** Nothing. Can start immediately.
+**Backend verified:**
+- ✅ Valid manual course payload → 200 + round_stats
+- ✅ `manual_course` + `course_id` → 422
+- ✅ `manual_course` + `shots` → 422
+- ✅ `par_values` count ≠ `holes` → 422 (Pydantic validation)
 
 ---
 

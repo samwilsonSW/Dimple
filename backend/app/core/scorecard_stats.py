@@ -76,6 +76,7 @@ def calculate_round_stats(
     handicap: float,
     course_rating: Optional[float] = None,
     course_slope: Optional[int] = None,
+    manual_par_values: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """
     Calculate all aggregate stats from simple scorecard.
@@ -105,7 +106,11 @@ def calculate_round_stats(
     sg_approach = sum(calculate_sg_approach(h, baseline) for h in hole_data)
     
     # Strokes over/under (vs expected score)
-    total_par = sum(h.par for h in hole_data)
+    # Use manual par values if provided (manual course entry), otherwise from hole_data
+    if manual_par_values:
+        total_par = sum(manual_par_values)
+    else:
+        total_par = sum(h.par for h in hole_data)
     # Expected score = par + handicap (rough approximation)
     # More precise: use course rating if available
     if course_rating and course_slope:

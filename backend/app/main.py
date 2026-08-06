@@ -20,7 +20,7 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="0.7.0",
+    version="0.7.1",
 )
 
 app.include_router(courses.router)
@@ -103,7 +103,7 @@ def ingest_round(payload: RoundPayload):
     """
     supabase = get_supabase()
 
-    # 1) Insert round metadata (including reflection if provided)
+    # 1) Insert round metadata (including reflection and manual_course if provided)
     round_insert = {
         "user_id": payload.user_id,
         "round_date": payload.round_date,
@@ -111,6 +111,9 @@ def ingest_round(payload: RoundPayload):
         "handicap_index": payload.handicap_index,
         "reflection": payload.reflection,
     }
+    # Add manual_course JSONB if present (mutually exclusive with course_id)
+    if payload.manual_course:
+        round_insert["manual_course"] = payload.manual_course.model_dump()
     result = supabase.table("rounds").insert(round_insert).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to insert round")
@@ -226,11 +229,17 @@ def ingest_round(payload: RoundPayload):
     round_stats = None
     if payload.hole_data:
         try:
+            # For manual courses, use provided par_values for strokes_over_under
+            manual_par_values = None
+            if payload.manual_course:
+                manual_par_values = payload.manual_course.par_values
+            
             stats = calculate_round_stats(
                 hole_data=payload.hole_data,
                 handicap=payload.handicap_index,
                 course_rating=payload.tee_box.rating if payload.tee_box else None,
                 course_slope=payload.tee_box.slope if payload.tee_box else None,
+                manual_par_values=manual_par_values,
             )
             stats_row = {
                 "round_id": str(round_id),
