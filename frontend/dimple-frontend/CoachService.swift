@@ -1,13 +1,56 @@
 import Foundation
 import Supabase
 
+/// User-facing coach failures. Maps low-level `URLError`s and non-200 responses
+/// onto short, reassuring copy with a clear next step (retry) — so the chat never
+/// surfaces a raw string like "Network connection was lost" (spec:
+/// FRONTEND_LOADING_INDICATOR_SPEC.md). The chat error bubble renders
+/// `errorDescription`.
+enum CoachError: LocalizedError {
+    case timedOut
+    case connectionLost
+    case offline
+    case server(status: Int)
+    case cancelled
+    case underlying(String)
+
+    init(urlError e: URLError) {
+        switch e.code {
+        case .timedOut:                            self = .timedOut
+        case .networkConnectionLost:               self = .connectionLost
+        case .notConnectedToInternet, .dataNotAllowed: self = .offline
+        case .cancelled:                           self = .cancelled
+        default:                                   self = .underlying(e.localizedDescription)
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut:
+            return "The coach is taking longer than usual. Tap retry to keep going."
+        case .connectionLost:
+            return "The connection dropped — this can happen when your phone goes to sleep. Tap retry."
+        case .offline:
+            return "You appear to be offline. Check your connection, then retry."
+        case .server(let status):
+            return status >= 500
+                ? "The coach hit a snag on our end. Give it another try."
+                : "Something went wrong (\(status)). Tap retry."
+        case .cancelled:
+            return "That request was cancelled. Tap retry."
+        case .underlying(let message):
+            return message
+        }
+    }
+}
+
 /// Conversational AI Coach client. Mirrors the other services: shared singleton,
 /// same base URL, authenticated session for the bearer token + lowercased user_id.
 ///
 /// Backed by `/api/v1/coach/chat` (replaces the old single-shot `/coach/ask`).
 final class CoachService {
     static let shared = CoachService()
-    private let baseURL = "https://evidence-dialogue-chronicle-officers.trycloudflare.com"
+    private let baseURL = "https://dimple-api.chokepointmonitor.com"
 
     private struct ChatRequest: Encodable {
         let user_id: String
@@ -43,8 +86,7 @@ final class CoachService {
             ChatRequest(user_id: userID, conversation_id: conversationID, message: message, round_id: roundID)
         )
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try Self.validate(response, data)
+        let data = try await Self.perform(request)
         return try JSONDecoder().decode(CoachChatResponse.self, from: data)
     }
 
@@ -63,8 +105,7 @@ final class CoachService {
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try Self.validate(response, data)
+        let data = try await Self.perform(request)
         return try JSONDecoder().decode(ConversationsResponse.self, from: data).conversations
     }
 
@@ -85,8 +126,7 @@ final class CoachService {
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try Self.validate(response, data)
+        let data = try await Self.perform(request)
         return try JSONDecoder()
             .decode(ConversationMessagesResponse.self, from: data)
             .messages
@@ -95,10 +135,27 @@ final class CoachService {
 
     // MARK: Helpers
 
-    private static func validate(_ response: URLResponse, _ data: Data) throws {
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? "unknown error"
-            throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: body])
+    /// Runs the request and normalises every failure into a `CoachError` so the
+    /// UI can show reassuring copy. Transport failures (timeout, connection lost,
+    /// offline) come from `URLSession`; non-200s become `.server(status:)`.
+    private static func perform(_ request: URLRequest) async throws -> Data {
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw CoachError.underlying("Unexpected response from the server.")
+            }
+            guard http.statusCode == 200 else {
+                #if DEBUG
+                let body = String(data: data, encoding: .utf8) ?? "<no body>"
+                print("CoachService HTTP \(http.statusCode): \(body)")
+                #endif
+                throw CoachError.server(status: http.statusCode)
+            }
+            return data
+        } catch let error as CoachError {
+            throw error
+        } catch let error as URLError {
+            throw CoachError(urlError: error)
         }
     }
 }

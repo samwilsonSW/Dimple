@@ -5,7 +5,7 @@ import Supabase
 /// base URL, authenticated session for the bearer token + lowercased user_id.
 final class RoundHistoryService {
     static let shared = RoundHistoryService()
-    private let baseURL = "https://evidence-dialogue-chronicle-officers.trycloudflare.com"
+    private let baseURL = "https://dimple-api.chokepointmonitor.com"
 
 
     func fetchRounds(limit: Int = 50) async throws -> [RoundHistoryItem] {
