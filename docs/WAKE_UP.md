@@ -25,11 +25,13 @@
 ### What's In Progress
 - ✅ Phase A: Backend coach rework — COMPLETE
 - ✅ Phase B: Frontend chat UI — COMPLETE (merged to Kanary)
-- 🧪 Coach reliability fixes — connection pooling, non-fatal verify, 120s timeout (merged to Kanary)
+- ✅ Coach reliability fixes — connection pooling, non-fatal verify, 120s timeout (merged to Kanary)
 - 🧪 Auto-chat-titles — inline generation + background script (`feature/auto-chat-titles`, ready for merge)
 - ✅ Manual course entry — backend complete (migration 019, `POST /rounds` accepts `manual_course`). Frontend ready to build.
+- 🧪 Course selection bug fix — committed on `feature/v1-frontend-fixes`, needs simulator verification
 
 ### What's Blocked / Deferred
+- Coach loading indicator — PARKED post-v1.0.0 (rendering bug, needs backend streaming/async)
 - Submit idempotency — backlog (duplicate prevention on retry)
 - Swipe-to-delete in Round History — needs backend `DELETE /rounds/{id}`
 - Voice memo parsing — CANCELLED per Duk taste

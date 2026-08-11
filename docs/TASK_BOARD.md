@@ -6,9 +6,9 @@
 
 ---
 
-## Current State (2026-08-04)
+## Current State (2026-08-11)
 
-**Target: v1.0.0** — Three features, then ship. Merge Kanary → main, tag release.
+**Target: v1.0.0** — Two features, then ship. Merge Kanary → main, tag release. Coach loading indicator **parked post-v1.0.0** per Duk.
 
 **Core loop is functional:** Course search → Scorecard entry → Submit → Round History display → Coach chat.
 
@@ -18,9 +18,9 @@
 
 | # | Feature | Status | Owner | Spec |
 |---|---------|--------|-------|------|
-| 1 | Manual Course Entry | Ready to build | Kanary backend, [CC] frontend | `docs/MANUAL_COURSE_ENTRY_SPEC.md` |
-| 2 | Coach Loading Indicator | Ready to build | [CC] frontend | `docs/FRONTEND_LOADING_INDICATOR_SPEC.md` |
-| 3 | Course Selection Flow Bug | Ready to build | [CC] frontend | `docs/COURSE_SELECTION_FLOW_BUG_SPEC.md` |
+| 1 | Manual Course Entry | Ready to build | Kanary backend ✅, [CC] frontend | `docs/MANUAL_COURSE_ENTRY_SPEC.md` |
+| 2 | Coach Loading Indicator | **PARKED post-v1.0.0** | [CC] frontend | `docs/FRONTEND_LOADING_INDICATOR_SPEC.md` |
+| 3 | Course Selection Flow Bug | Fix committed, needs verification | [CC] frontend | `docs/COURSE_SELECTION_FLOW_BUG_SPEC.md` |
 
 ---
 
@@ -70,19 +70,21 @@
 
 ---
 
-### [CC] 2. Coach Loading Indicator
+### [CC] 2. Coach Loading Indicator — PARKED post-v1.0.0
 
-**Status:** Spec drafted, ready for implementation  
+**Status:** Parked per Duk (2026-08-11). Friendly error copy shipped. Visual indicator has rendering bug — not a blocker for v1.0.0.  
 **What:** Visual feedback while coach is "thinking"
 
 **Acceptance:**
+- [x] Friendly error copy on failure (shipped)
 - [ ] Optimistic message insertion (user message appears instantly)
 - [ ] Animated "typing" indicator (pulsing dots or "Coach is thinking…")
 - [ ] Retry UI on failure (not generic "Network connection was lost")
 - [ ] State preserved on app background/foreground
 
 **Files:** `CoachChatView.swift`, `CoachService.swift`, message models  
-**Spec:** `docs/FRONTEND_LOADING_INDICATOR_SPEC.md`
+**Spec:** `docs/FRONTEND_LOADING_INDICATOR_SPEC.md`  
+**Note:** Real fix is backend streaming/async. Queue for v1.1.
 
 ---
 
@@ -143,11 +145,22 @@
 
 ## v1.0.0 Release Checklist
 
-- [ ] All three features merged to Kanary
+- [ ] Verify course selection bug fix (simulator + NAVLOG)
+- [ ] Strip NAVLOG debug logging from `NewRoundView.swift`
+- [ ] Build Manual Course Entry frontend
 - [ ] Duk tests on device
+- [ ] Screenshot + demo video for README
 - [ ] Update README.md for v1.0.0
-- [ ] Merge Kanary → main
+- [ ] Merge `feature/v1-frontend-fixes` → `Kanary`
+- [ ] Merge `Kanary` → `main`
 - [ ] Tag `v1.0.0`
+
+## Post-v1.0.0 Backlog
+
+- Coach loading indicator (streaming/async backend fix)
+- Submit idempotency (`client_round_id` + unique constraint)
+- Swipe-to-delete in Round History (needs `DELETE /rounds/{id}`)
+- Enhanced scorecard fields (miss direction)
 
 ---
 

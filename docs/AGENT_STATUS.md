@@ -7,9 +7,9 @@
 
 ---
 
-## Claude Code — Current Task (2026-08-05 — v1.0.0 push)
+## Claude Code — Current Task (2026-08-11 — v1.0.0 push)
 
-- **Task:** v1.0.0 — three features in one night (with Duk on-device testing).
+- **Task:** v1.0.0 — two features (manual course entry + course selection bug fix), then ship. Coach loading indicator **parked post-v1.0.0** per Duk.
 - **Working branch:** `feature/v1-frontend-fixes` (off `Kanary`) → PR into `Kanary`,
   Duk merges. Per Chrollo plan: features land via PRs into Kanary, no racing the branch.
 - **Build:** green (xcodebuild, generic iOS Simulator) after every change below.
@@ -38,6 +38,9 @@
   is momentarily nil (that reset == the "kicked back to search" symptom). Held out
   of the commit until a simulator run + `NAVLOG` console paste confirms the fix;
   debug logging will be stripped before it lands.
+  
+  **Next step for Duk:** Run simulator, check console for `NAVLOG` output, confirm
+  no path reset on tee selection. If clean, commit and push.
 
 **Backend shipped — Kanary completed (2026-08-06):**
 - ✅ **Feature #1 (Manual Course Entry).** Backend live and verified:
@@ -54,11 +57,8 @@
 - **FYI (no contract change):** tonight's frontend commits change no request/response
   shape — just the base URL (not in the contract) and client-side error copy.
 - ⏱️ **Coach latency is a UX problem (your lane).** Measured live 2026-08-05:
-  "Where am I losing strokes?" took **1m35s** (curl of `/coach/chat` earlier: ~14s
-  for a zero-data reply). This is the LLM thinking-mode latency the contract already
-  flagged. 95s of dead air is rough — it makes a working loading indicator more
-  important later, but the real fix is backend (streaming / async / faster path).
-  Surfacing per the plan: latency is taste-bearing.
+  "Where am I losing strokes?" took **1m35s**. Duk parked the loading indicator
+  for post-v1.0.0 — real fix is backend streaming/async. Not blocking release.
 
 **Backend Status (verified live against the new tunnel):**
 - ✅ `POST /api/v1/coach/chat` — verified 200, response shape matches models (zero-data fallback exercised: confidence 1, follow-up question, no drills)
@@ -149,6 +149,25 @@ Both trace to the same thing: **Supabase calls from the M1 are intermittently ve
 ## Blockers
 
 - None. All known issues resolved (PR #10, PR #11, migration 015 applied).
+
+## Duk's Next Session Checklist (when back at Mac)
+
+1. **Verify course selection bug fix:**
+   - Open Xcode, run simulator
+   - Search course → select tee → confirm NOT kicked back to search
+   - Check console for `NAVLOG` output, confirm no path reset
+   - If clean: tell Claude Code to strip `NAVLOG` and commit
+
+2. **Kick off Manual Course Entry frontend:**
+   - Tell Claude Code to pick up `[CC] 1. Manual Course Entry` from TASK_BOARD.md
+   - Spec: `docs/MANUAL_COURSE_ENTRY_SPEC.md`
+   - Backend contract: `API_CONTRACT.md` v0.7.1
+
+3. **Test on device** once both features land
+
+4. **Screenshots + demo video** for README
+
+5. **Ship:** Merge `feature/v1-frontend-fixes` → `Kanary` → `main`, tag `v1.0.0`
 
 ## New Issue for Claude Code — iOS App Cannot Connect to Backend
 
