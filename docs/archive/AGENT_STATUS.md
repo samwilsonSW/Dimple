@@ -7,13 +7,58 @@
 
 ---
 
-## Claude Code — Current Task
+## Claude Code — Current Task (2026-08-11 — v1.0.0 push)
 
-- **Task:** Phase B — Conversational Coach Chat UI
-- **Status:** ✅ Built, build green (xcodebuild, generic iOS Simulator). Awaiting Duk on-device taste test.
-- **Branch:** Kanary (working branch — main is release, Kanary is where we build)
-- **Last completed:** Phase B chat UI (2026-07-14)
-- **API base URL:** swapped all 4 services → `https://evidence-dialogue-chronicle-officers.trycloudflare.com` (per Duk, 2026-07-14). Uncommitted.
+- **Task:** v1.0.0 — two features (manual course entry + course selection bug fix), then ship. Coach loading indicator **parked post-v1.0.0** per Duk.
+- **Working branch:** `feature/v1-frontend-fixes` (off `Kanary`) → PR into `Kanary`,
+  Duk merges. Per Chrollo plan: features land via PRs into Kanary, no racing the branch.
+- **Build:** green (xcodebuild, generic iOS Simulator) after every change below.
+
+**Committed on `feature/v1-frontend-fixes` (pushed):**
+- 🔴→🟢 **Base URL fixed.** All 4 services pointed at a dead ephemeral tunnel
+  (`evidence-dialogue-chronicle-officers.trycloudflare.com` — DNS no longer resolves;
+  this URL was still committed on `Kanary`). Swapped all 4 → the stable named tunnel
+  `https://dimple-api.chokepointmonitor.com` (verified live, 200). **Nothing
+  connected before this.**
+- ⚠️ **Feature #2 (Coach loading indicator) — PARTIAL, indicator PARKED per Duk.**
+  Shipped: `CoachError` classification in `CoachService` → friendly copy for
+  timeout / connection-lost / offline / 500 (replaces raw "Network connection was
+  lost"). **Known bug:** the pre-existing "Analyzing your game…" typing indicator
+  does **not** render at runtime — confirmed on-device by Duk (zero indicator on
+  new *and* existing chats, even after a clean build). The request itself works
+  (Duk got a confidence-4 answer), so `isSending` is true the whole wait but the
+  `typingBubble` branch isn't drawing — a view/rendering issue, not a request
+  failure. Debug logging (`COACHLOG`) was added then reverted; tree is clean.
+  **Deprioritized by Duk — do not spend energy here right now.**
+
+**In progress (NOT committed — working tree only):**
+- 🟡 **Bug #3 (course-selection kickback).** Instrumented `NewRoundView` with
+  `NAVLOG` tracing (DEBUG-only) + hardened the one destructive line: the
+  `routeView` fallback no longer resets the nav path to root when the scorecard VM
+  is momentarily nil (that reset == the "kicked back to search" symptom). Held out
+  of the commit until a simulator run + `NAVLOG` console paste confirms the fix;
+  debug logging will be stripped before it lands.
+  
+  **Next step for Duk:** Run simulator, check console for `NAVLOG` output, confirm
+  no path reset on tee selection. If clean, commit and push.
+
+**Backend shipped — Kanary completed (2026-08-06):**
+- ✅ **Feature #1 (Manual Course Entry).** Backend live and verified:
+  - Migration 019 applied: `manual_course` JSONB column on `rounds`
+  - `POST /api/v1/rounds` accepts `manual_course` field (embedded, no new endpoint)
+  - Validation: mutual exclusivity with `course_id` (422), rejects `shots` (422)
+  - `calculate_round_stats` uses `manual_par_values` for strokes_over_under
+  - `API_CONTRACT.md` updated to v0.7.1
+  - All three validation cases verified live against tunnel
+- **Frontend unblocked.** Claude Code can now build `ManualCourseEntryView` and wire to `POST /rounds`.
+
+### Kanary — action needed (contract is yours; I'm proposing, not editing)
+- ✅ **Manual Course Entry backend complete.** Frontend is scoped and ready. No further backend work needed.
+- **FYI (no contract change):** tonight's frontend commits change no request/response
+  shape — just the base URL (not in the contract) and client-side error copy.
+- ⏱️ **Coach latency is a UX problem (your lane).** Measured live 2026-08-05:
+  "Where am I losing strokes?" took **1m35s**. Duk parked the loading indicator
+  for post-v1.0.0 — real fix is backend streaming/async. Not blocking release.
 
 **Backend Status (verified live against the new tunnel):**
 - ✅ `POST /api/v1/coach/chat` — verified 200, response shape matches models (zero-data fallback exercised: confidence 1, follow-up question, no drills)
@@ -104,6 +149,25 @@ Both trace to the same thing: **Supabase calls from the M1 are intermittently ve
 ## Blockers
 
 - None. All known issues resolved (PR #10, PR #11, migration 015 applied).
+
+## Duk's Next Session Checklist (when back at Mac)
+
+1. **Verify course selection bug fix:**
+   - Open Xcode, run simulator
+   - Search course → select tee → confirm NOT kicked back to search
+   - Check console for `NAVLOG` output, confirm no path reset
+   - If clean: tell Claude Code to strip `NAVLOG` and commit
+
+2. **Kick off Manual Course Entry frontend:**
+   - Tell Claude Code to pick up `[CC] 1. Manual Course Entry` from TASK_BOARD.md
+   - Spec: `docs/MANUAL_COURSE_ENTRY_SPEC.md`
+   - Backend contract: `API_CONTRACT.md` v0.7.1
+
+3. **Test on device** once both features land
+
+4. **Screenshots + demo video** for README
+
+5. **Ship:** Merge `feature/v1-frontend-fixes` → `Kanary` → `main`, tag `v1.0.0`
 
 ## New Issue for Claude Code — iOS App Cannot Connect to Backend
 
