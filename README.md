@@ -189,10 +189,10 @@ Dimple/
 │   └── rounds/             # Sample rounds for testing
 ├── dimple_tui.py           # Interactive terminal for testing
 ├── docs/
-│   ├── API_CONTRACT.md     # Backend ↔ Frontend interface
-│   ├── TASK_BOARD.md       # What's in progress
-│   ├── AGENT_STATUS.md     # Claude Code heartbeat
-│   └── CHROLLO_ORCHESTRATION_PLAN.md  # How we work
+│   ├── STATUS.md           # Current state, what's working
+│   ├── API_CONTRACT.md     # Endpoint shapes, schemas, rules
+│   ├── TASK_BOARD.md       # Active tasks, backlog, done
+│   └── archive/            # Old docs for reference
 └── README.md
 ```
 
