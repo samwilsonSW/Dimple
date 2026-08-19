@@ -6,7 +6,7 @@
 
 ## Version
 
-`0.7.1` — matches `backend/app/main.py`
+`0.7.2` — matches `backend/app/main.py`
 
 ---
 
@@ -198,6 +198,21 @@ GET /api/v1/rounds?user_id={uuid}&limit=20
 - `sg_putting`, `sg_approach` numeric
 - `strokes_over_under` numeric
 - `avg_putts_per_hole`, `avg_score_to_par` numeric
+
+**`conversations`**
+- `id` BIGSERIAL PK
+- `user_id` text
+- `title` text
+- `summary` text (optional, LLM-generated summary of older messages)
+- `summarized_message_count` int (how many messages have been summarized)
+- `created_at` timestamp
+
+**`messages`**
+- `id` BIGSERIAL PK
+- `conversation_id` BIGINT FK
+- `role` text (user/assistant)
+- `content` text
+- `created_at` timestamp
 
 **`courses`**
 - `id` uuid PK
