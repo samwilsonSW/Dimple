@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any
+import threading
 
 from app.core.config import get_settings
 from app.core.baselines import get_baseline_for_handicap
@@ -24,6 +25,31 @@ app = FastAPI(
 )
 
 app.include_router(courses.router)
+
+
+@app.on_event("startup")
+def warm_embedding_model():
+    """Warm the embedding model in the background when the server boots.
+
+    The model loads lazily at module level so that importing the app stays free
+    — CI, schema export and the smoke test never need it. But a long-lived
+    server wants it warm, or the first coach request after a restart pays the
+    load on top of already-slow coach latency.
+
+    Runs on a daemon thread so boot never blocks: if huggingface.co is slow or
+    unreachable, `HF_HUB_DOWNLOAD_TIMEOUT` is 300s and we must not hold /health
+    hostage to it. A request arriving mid-warmup just waits on the same lock.
+    """
+    def _warm():
+        from app.services.embeddings import get_model
+
+        try:
+            get_model()
+        except Exception as exc:  # noqa: BLE001 — never take the server down
+            print(f"[startup] embedding model warmup failed, will retry on demand: {exc}")
+
+    threading.Thread(target=_warm, name="embed-warmup", daemon=True).start()
+
 
 app.add_middleware(
     CORSMiddleware,
