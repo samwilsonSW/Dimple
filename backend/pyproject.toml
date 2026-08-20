@@ -1,0 +1,28 @@
+[project]
+name = "dimple-backend"
+version = "0.7.1"
+description = "Dimple — golf intelligence backend (FastAPI + Supabase + Moonshot LLM)"
+requires-python = ">=3.12"
+
+# Direct dependencies only. The full transitive tree — ~90 packages — is pinned
+# in uv.lock, which is what makes docs/openapi.json reproducible: the schema is
+# emitted by pydantic, so its version has to be fixed, not merely constrained.
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.32.0",
+    "pydantic==2.11.7",
+    "pydantic-settings==2.6.0",
+    "supabase==2.30.0",
+    "openai==1.54.0",
+    "python-dotenv==1.0.0",
+    "httpx==0.27.0",
+    "requests==2.32.5",
+    "sentence-transformers==3.4.0",
+    "torch>=2.6.0",
+    "numpy>=2.0.0",
+]
+
+[tool.uv]
+# There is no installable package here — app/ is imported from the backend
+# directory, not built. Without this uv tries to build a wheel and fails.
+package = false

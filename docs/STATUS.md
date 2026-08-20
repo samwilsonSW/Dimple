@@ -1,6 +1,9 @@
 # Dimple Status
 
-> **Read this first.** Current state, what's working, what's next.
+> **Current state only** — what's working, what's in flight, what's blocked.
+> Conventions and landmines live in [`AGENTS.md`](../AGENTS.md); interface
+> semantics in [`API_CONTRACT.md`](API_CONTRACT.md). Keep those out of here so
+> this file can change freely without anything else going stale.
 
 ---
 

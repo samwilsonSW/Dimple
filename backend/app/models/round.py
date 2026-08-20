@@ -217,6 +217,14 @@ class Message(BaseModel):
     created_at: Optional[str] = None
 
 
+class DrillRecommendation(BaseModel):
+    priority: int = Field(..., description="Priority order: 1 = highest")
+    focus_area: str = Field(..., description="e.g. '6-iron push', 'lag putting'")
+    drill_name: str = Field(..., description="Name of the drill")
+    instructions: str = Field(..., description="Step-by-step drill instructions")
+    expected_outcome: str = Field(..., description="What success looks like")
+
+
 class CoachChatResponse(BaseModel):
     """Response model for conversational coach endpoint."""
     conversation_id: int
@@ -246,14 +254,6 @@ class ConversationSummary(BaseModel):
     message_count: int = 0
     last_message_at: Optional[str] = None
     preview: Optional[str] = None
-
-
-class DrillRecommendation(BaseModel):
-    priority: int = Field(..., description="Priority order: 1 = highest")
-    focus_area: str = Field(..., description="e.g. '6-iron push', 'lag putting'")
-    drill_name: str = Field(..., description="Name of the drill")
-    instructions: str = Field(..., description="Step-by-step drill instructions")
-    expected_outcome: str = Field(..., description="What success looks like")
 
 
 class CoachResponse(BaseModel):
