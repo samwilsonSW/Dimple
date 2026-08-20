@@ -108,6 +108,43 @@ def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
     return raw
 
 
+SUMMARY_SYSTEM_PROMPT = """You are a conversation summarizer for a golf coaching chat.
+Summarize the older messages below so the coach remembers what was discussed.
+
+Rules:
+- 3-6 bullet points
+- Capture: topics discussed, advice already given, player goals or preferences, any numbers mentioned
+- Be terse — this is memory, not prose
+
+Respond with ONLY the bullet points. No preamble."""
+
+
+def summarize_conversation(messages: list) -> str | None:
+    """Summarize older conversation messages with the cheap model.
+
+    Returns None on failure — caller falls back to no summary.
+    """
+    if not messages:
+        return None
+    transcript = "\n".join(
+        f"{'Player' if m.get('role') == 'user' else 'Coach'}: {m.get('content', '')}"
+        for m in messages
+    )
+    try:
+        response = moonshot_client.chat.completions.create(
+            model="moonshot-v1-8k",
+            messages=[
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": transcript},
+            ],
+            temperature=0.3,
+            max_tokens=500,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return None
+
+
 def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> dict:
     """Call Moonshot kimi-k2.5 to generate a structured JSON coaching response."""
     structured_system_prompt = (

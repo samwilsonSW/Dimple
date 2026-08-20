@@ -9,7 +9,7 @@
 
 ## Right Now
 
-**Version:** 0.7.1  
+**Version:** 0.7.2  
 **Branch:** `Kanary` (working) → `main` (release)  
 **API:** `https://dimple-api.chokepointmonitor.com`
 
@@ -17,7 +17,7 @@
 - Course search + selection
 - Scorecard entry (per-hole, auto-save)
 - Round history with stats
-- AI Coach chat (conversational, data-aware)
+- AI Coach chat (conversational, data-aware, with conversation summaries)
 - Manual course entry (backend complete, frontend ready)
 
 ### In Progress
@@ -48,4 +48,4 @@ Everything else is negotiable.
 
 ---
 
-*Last updated: 2026-08-13*
+*Last updated: 2026-08-19*

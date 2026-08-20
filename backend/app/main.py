@@ -12,7 +12,7 @@ from app.models.round import (
 )
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
-from app.services.llm import generate_coach_response, generate_structured_coach_response
+from app.services.llm import generate_coach_response, generate_structured_coach_response, summarize_conversation
 from app.services.title_generator import generate_title
 from app.routers import courses
 
@@ -386,6 +386,102 @@ def fetch_trend_summary(supabase, user_id: str) -> str:
     return "\n".join(lines)
 
 
+def fetch_course_performance(supabase, user_id: str) -> str:
+    """Fetch per-course performance summary. Only includes courses with 2+ rounds."""
+    try:
+        result = (
+            supabase.table("rounds")
+            .select("course, round_stats(*)")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        rows = result.data or []
+    except Exception:
+        return ""
+
+    # Group stats by course name
+    by_course: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rows:
+        stats = r.get("round_stats")
+        if isinstance(stats, list):
+            stats = stats[0] if stats else None
+        if not stats:
+            continue
+        name = (r.get("course") or {}).get("name") or "Unknown Course"
+        by_course.setdefault(name, []).append(stats)
+
+    lines = []
+    for name, course_stats in sorted(by_course.items(), key=lambda kv: -len(kv[1])):
+        n = len(course_stats)
+        if n < 2:
+            continue  # sample size too small to be meaningful
+        avg_score = sum(s.get("total_score") or 0 for s in course_stats) / n
+        avg_putts = sum(s.get("total_putts") or 0 for s in course_stats) / n
+        avg_gir = sum(s.get("gir_percentage") or 0 for s in course_stats) / n
+        avg_sg_putt = sum(s.get("sg_putting") or 0 for s in course_stats) / n
+        avg_sg_app = sum(s.get("sg_approach") or 0 for s in course_stats) / n
+        lines.append(
+            f"  {name} ({n} rounds): Avg score {avg_score:.0f}, Putts {avg_putts:.1f}, "
+            f"GIR {avg_gir:.0%}, SG Putting {avg_sg_putt:+.1f}, SG Approach {avg_sg_app:+.1f}"
+        )
+
+    if not lines:
+        return ""
+    return "Course-by-Course Performance (2+ rounds at a course):\n" + "\n".join(lines)
+
+
+def fetch_weakness_analysis(supabase, user_id: str) -> str:
+    """Rank SG categories by scoring impact over recent rounds, for drill targeting."""
+    try:
+        result = (
+            supabase.table("round_stats")
+            .select("sg_putting, sg_approach, gir_percentage, fairway_percentage, avg_putts_per_hole")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(5)
+            .execute()
+        )
+        stats = result.data or []
+    except Exception:
+        return ""
+
+    if len(stats) < 2:
+        return ""
+
+    n = len(stats)
+    avg_sg_putting = sum(s.get("sg_putting") or 0 for s in stats) / n
+    avg_sg_approach = sum(s.get("sg_approach") or 0 for s in stats) / n
+    avg_gir = sum(s.get("gir_percentage") or 0 for s in stats) / n
+    putts_vals = [s["avg_putts_per_hole"] for s in stats if s.get("avg_putts_per_hole") is not None]
+    avg_putts = sum(putts_vals) / len(putts_vals) if putts_vals else None
+
+    WEAKNESS_THRESHOLD = -0.5  # SG/round; below this a category is a scoring leak
+    weaknesses = []
+    if avg_sg_approach < WEAKNESS_THRESHOLD:
+        weaknesses.append(("APPROACH", avg_sg_approach, f"GIR {avg_gir:.0%}"))
+    if avg_sg_putting < WEAKNESS_THRESHOLD:
+        detail = f"{avg_putts:.1f} putts/hole" if avg_putts else "putting trending poorly"
+        weaknesses.append(("PUTTING", avg_sg_putting, detail))
+    weaknesses.sort(key=lambda w: w[1])  # most negative = biggest leak = first
+
+    lines = [f"Weakness Analysis (last {n} rounds, ranked by scoring impact):"]
+    if weaknesses:
+        for i, (name, sg, detail) in enumerate(weaknesses, 1):
+            lines.append(f"  {i}. {name}: {sg:+.1f} SG/round ({detail})")
+        lines.append(
+            "Coach instruction: prioritize drill recommendations for the #1 weakness above. "
+            "Only address lower-priority weaknesses if the player's question is about them. "
+            "Do NOT suggest drills for unlisted categories — those are relative strengths; "
+            "mention them only as encouragement."
+        )
+    else:
+        lines.append(
+            "  No category below -0.5 SG/round — the player's game is balanced right now. "
+            "Reinforce strengths; suggest maintenance work only if they ask."
+        )
+    return "\n".join(lines)
+
+
 def fetch_shot_history(supabase, user_id: str, question: str) -> tuple:
     """Fetch similar shots via RAG. Returns (shots, sg_summary)."""
     try:
@@ -459,6 +555,64 @@ def fetch_reflections(supabase, user_id: str, limit: int = 3) -> str:
     return "\n".join(blocks)
 
 
+def _get_or_refresh_conversation_summary(
+    supabase,
+    conversation_id: int,
+    total_messages: int,
+    window: int,
+    refresh_threshold: int,
+) -> str:
+    """Return a summary of messages older than the verbatim context window.
+
+    Reuses the cached conversations.summary if it's fresh enough; otherwise
+    regenerates with a cheap LLM call and stores it. Fails soft ("").
+    """
+    to_summarize_count = total_messages - window  # messages outside the window
+    try:
+        conv = (
+            supabase.table("conversations")
+            .select("summary, summarized_message_count")
+            .eq("id", conversation_id)
+            .single()
+            .execute()
+        )
+        existing_summary = (conv.data or {}).get("summary")
+        summarized_count = (conv.data or {}).get("summarized_message_count") or 0
+    except Exception:
+        # Columns may not exist yet (migration 020 not applied) — skip summary
+        return ""
+
+    # Reuse cache if fewer than `refresh_threshold` new messages have aged out
+    if existing_summary and (to_summarize_count - summarized_count) < refresh_threshold:
+        return existing_summary
+
+    try:
+        old_msgs = (
+            supabase.table("messages")
+            .select("role, content")
+            .eq("conversation_id", conversation_id)
+            .order("created_at")
+            .limit(to_summarize_count)
+            .execute()
+        )
+        messages = old_msgs.data or []
+        if not messages:
+            return existing_summary or ""
+
+        summary = summarize_conversation(messages)
+        if not summary:
+            return existing_summary or ""
+
+        supabase.table("conversations").update({
+            "summary": summary,
+            "summarized_message_count": to_summarize_count,
+        }).eq("id", conversation_id).execute()
+        return summary
+    except Exception as e:
+        logger.warning(f"Conversation summary failed for conv {conversation_id}: {e}")
+        return existing_summary or ""
+
+
 def build_system_prompt(inventory: Dict[str, Any]) -> str:
     """Build adaptive system prompt based on data inventory."""
     parts = ["You are Dimple Coach, an expert golf coach."]
@@ -509,26 +663,41 @@ def build_user_prompt(
     sg_summary: str,
     reflection_text: str,
     conversation_history: List[Dict[str, str]] = None,
+    conversation_summary: str = "",
+    course_text: str = "",
+    weakness_text: str = "",
 ) -> str:
     """Build user prompt with conditional sections."""
     parts = [f"Player Question: {question}", ""]
-    
+
+    # Summary of older messages (beyond the verbatim window)
+    if conversation_summary:
+        parts.extend([
+            "Earlier in this conversation (summary):",
+            conversation_summary,
+            "",
+        ])
+
     # Conversation history
     if conversation_history:
-        parts.append("Previous messages in this conversation:")
+        parts.append("Recent messages in this conversation:")
         for msg in conversation_history:
             role = "Player" if msg["role"] == "user" else "Coach"
             parts.append(f"{role}: {msg['content']}")
         parts.append("")
-    
+
     # Scorecard summary
     if round_stats_text and inventory["has_round_stats"]:
         parts.extend([round_stats_text, ""])
-    
+
     # Trends
     if trend_text and inventory["has_trends"]:
         parts.extend([trend_text, ""])
-    
+
+    # Per-course performance
+    if course_text:
+        parts.extend([course_text, ""])
+
     # Shot history and SG (only if shots exist)
     if inventory["has_shots"]:
         parts.extend([
@@ -539,7 +708,7 @@ def build_user_prompt(
             shot_history_text,
             "",
         ])
-    
+
     # Reflections
     if reflection_text and inventory["has_reflections"]:
         parts.extend([
@@ -547,7 +716,11 @@ def build_user_prompt(
             reflection_text,
             "",
         ])
-    
+
+    # Weakness ranking (drives drill targeting)
+    if weakness_text:
+        parts.extend([weakness_text, ""])
+
     # Instruction
     parts.append(
         "Based on the available data above, provide a helpful coaching response. "
@@ -555,7 +728,7 @@ def build_user_prompt(
         "Connect quantitative data with qualitative observations. "
         "If data is limited, ask one focused follow-up question to better understand the player's situation."
     )
-    
+
     return "\n".join(parts)
 
 
@@ -639,16 +812,30 @@ def coach_chat(request: CoachChatRequest):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
     
-    # 2) Fetch conversation history (last 6 messages)
+    # 2) Fetch conversation history (last 15 messages) + summary of older messages
+    CONTEXT_MESSAGE_LIMIT = 15
+    SUMMARY_REFRESH_THRESHOLD = 10  # re-summarize after this many new messages age out
+
     conversation_history = []
+    conversation_summary = ""
     try:
-        msgs_result = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=True).limit(6).execute()
+        count_result = supabase.table("messages").select("id", count="exact").eq("conversation_id", conversation_id).execute()
+        total_messages = count_result.count or 0
+
+        msgs_result = supabase.table("messages").select("*").eq("conversation_id", conversation_id).order("created_at", desc=True).limit(CONTEXT_MESSAGE_LIMIT).execute()
         if msgs_result.data:
             # Reverse to get chronological order
             conversation_history = [
-                {"role": m["role"], "content": m["content"]} 
+                {"role": m["role"], "content": m["content"]}
                 for m in reversed(msgs_result.data)
             ]
+
+        # Summarize older messages that fall outside the verbatim window
+        if total_messages > CONTEXT_MESSAGE_LIMIT:
+            conversation_summary = _get_or_refresh_conversation_summary(
+                supabase, conversation_id, total_messages,
+                CONTEXT_MESSAGE_LIMIT, SUMMARY_REFRESH_THRESHOLD,
+            )
     except Exception:
         pass
     
@@ -682,6 +869,8 @@ def coach_chat(request: CoachChatRequest):
     # 5) Fetch conditional data
     round_stats_text = fetch_round_stats_summary(supabase, request.user_id) if inventory["has_round_stats"] else ""
     trend_text = fetch_trend_summary(supabase, request.user_id) if inventory["has_trends"] else ""
+    course_text = fetch_course_performance(supabase, request.user_id) if inventory["has_round_stats"] else ""
+    weakness_text = fetch_weakness_analysis(supabase, request.user_id) if inventory["has_round_stats"] else ""
     
     similar_shots = []
     sg_summary = "No SG data available."
@@ -708,6 +897,9 @@ def coach_chat(request: CoachChatRequest):
         sg_summary=sg_summary,
         reflection_text=reflection_text,
         conversation_history=conversation_history,
+        conversation_summary=conversation_summary,
+        course_text=course_text,
+        weakness_text=weakness_text,
     )
     
     # 7) Call LLM
