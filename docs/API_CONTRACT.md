@@ -21,6 +21,23 @@
 
 ---
 
+## Shapes live in `openapi.json`
+
+Field-level request/response schemas are **generated** from the Pydantic models
+into [`openapi.json`](./openapi.json) — that file is authoritative for shapes.
+Hand-transcribed schemas drift; generated ones cannot.
+
+```bash
+cd backend && python scripts/export_openapi.py     # regenerate after model changes
+cd backend && python scripts/smoke_test.py         # fails if it is stale
+```
+
+This document carries what a schema cannot: semantics, error meanings, and the
+risks below. The examples in each endpoint section are illustrative — when an
+example and `openapi.json` disagree, the generated file wins.
+
+---
+
 ## Endpoints
 
 ### Health
@@ -218,4 +235,40 @@ GET /api/v1/rounds?user_id={uuid}&limit=20
 
 ---
 
-*Owner: Whoever touches backend. Update this first, then code.*
+## Known Risks & Edge Cases
+
+Landmines that have already cost real debugging time. Read before touching the
+seam — this table is the reason it exists.
+
+| Risk | Status / mitigation |
+|------|---------------------|
+| `match_shots` RPC is **case-sensitive** on `user_id` | Lowercase every UUID before sending. Uppercase fails silently — no error, just no matches. |
+| Coach latency exceeds mobile client timeouts | Measured ~95s on 2026-08-05. iOS `CoachService.send()` raised to 180s. Real fix is streaming/async. **Anything adding a round-trip to `/coach/chat` is a taste decision — escalate it.** |
+| Backend→Supabase intermittent timeout on `/coach/chat` | Mitigated 2026-07 by connection pooling + making the conversation verify non-fatal (`fa7e17d`). Watch for recurrence rather than assuming it's gone. |
+| `GET /coach/conversations` and `/{id}/messages` require `user_id` | Missing → 422, not 500. Clients must always send it. |
+| GolfCourseAPI rate limit (50 req/day) | Cache aggressively in the Supabase `courses` table. |
+| Duplicate rounds on retry/submit | **Open.** No idempotency key. Fix is `client_round_id` + a unique constraint. |
+| Migrations are applied **by hand** in the Supabase SQL editor | `backend/migrations/` being present does *not* mean it ran. Never assume; ask or check the live schema. |
+| Forward references in `app/models/round.py` annotations | A class used in an annotation must be **defined above** its use, or import fails on Python < 3.14 (lazy annotations are 3.14+). Cost: the whole module failed to import on 3.12 from July until 2026-08-20. |
+| Embedding model download | **Fixed 2026-08-20.** `embeddings.py` used to build `SentenceTransformer` at module scope, so importing the app pulled ~90MB from HuggingFace and the server could not start without network access to huggingface.co. Now loads lazily via `get_model()`. Do not move it back to module scope. |
+| Dependency pins are load-bearing for `openapi.json` | The schema is emitted by pydantic, so a different pydantic version produces a slightly different file and the freshness check reports phantom drift. Always run tooling through `uv run`, never a hand-rolled venv. |
+| `requirements.txt` is **generated** | It is exported from `uv.lock`. Editing it by hand is silently discarded on the next export — change `pyproject.toml` and re-run `uv lock`. |
+
+---
+
+## Changelog
+
+| Date | Version | Change |
+|------|---------|--------|
+| 2026-05-22 | 0.5.0 | Reflections, SG aggregation, score variance |
+| 2026-06-16 | 0.6.0 | Course search, simple scorecard mode (`hole_data`), `courses` table |
+| 2026-06-29 | 0.6.0 | `round_id` is Int (BIGSERIAL) not String; `round_stats` is an array in history; added `avg_putts_per_hole`, `avg_score_to_par` |
+| 2026-07-14 | 0.7.0 | Replaced `/coach/ask` with `/coach/chat`. Added `/coach/conversations` and `/{id}/messages`. Removed the 25+ handicap gate. Data-source-aware prompts. |
+| 2026-08-06 | 0.7.1 | Added `manual_course` to `POST /rounds` (migration 019). Mutually exclusive with `course_id`; rejects `shots`. |
+
+`0.7.2` is proposed on `feature/coach-context-memory` (conversation summary,
+migration 020) and is **not** merged — see PR #16.
+
+---
+
+*Owner: whoever touches the backend. Update this first, then the code.*
