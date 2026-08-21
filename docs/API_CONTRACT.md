@@ -18,6 +18,7 @@
 | Dates `YYYY-MM-DD` | `2026-08-13` |
 | Handicap 0.0–54.0 | `13.2` |
 | Putting = feet, else yards | `before_distance_yards: 8` (feet for putts) |
+| Python **3.12 only** | `pydantic-core` fails to build on 3.14 (PyO3 max 3.13) |
 
 ---
 
@@ -250,6 +251,7 @@ seam — this table is the reason it exists.
 | Duplicate rounds on retry/submit | **Open.** No idempotency key. Fix is `client_round_id` + a unique constraint. |
 | Migrations are applied **by hand** in the Supabase SQL editor | `backend/migrations/` being present does *not* mean it ran. Never assume; ask or check the live schema. |
 | Forward references in `app/models/round.py` annotations | A class used in an annotation must be **defined above** its use, or import fails on Python < 3.14 (lazy annotations are 3.14+). Cost: the whole module failed to import on 3.12 from July until 2026-08-20. |
+| Python 3.14 **not supported** | `pydantic-core` (via PyO3) fails to build on 3.14 (max supported: 3.13). **Use Python 3.12.** Cost: server wouldn't start on 2026-08-20 after `uv` picked up system Python 3.14. Fix: `uv python install 3.12 && uv venv --python 3.12 && uv sync`. |
 | Embedding model download | **Fixed 2026-08-20.** `embeddings.py` used to build `SentenceTransformer` at module scope, so importing the app pulled ~90MB from HuggingFace and the server could not start without network access to huggingface.co. Now loads lazily via `get_model()`. Do not move it back to module scope. |
 | Dependency pins are load-bearing for `openapi.json` | The schema is emitted by pydantic, so a different pydantic version produces a slightly different file and the freshness check reports phantom drift. Always run tooling through `uv run`, never a hand-rolled venv. |
 | `requirements.txt` is **generated** | It is exported from `uv.lock`. Editing it by hand is silently discarded on the next export — change `pyproject.toml` and re-run `uv lock`. |

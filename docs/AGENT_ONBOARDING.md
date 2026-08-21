@@ -124,7 +124,7 @@ Applied **by hand** in Supabase SQL editor. `backend/migrations/` being present 
 
 | Error | Fix |
 |-------|-----|
-| `pydantic-core` build fails | Python 3.14 not supported. Use 3.12: `uv python install 3.12 && uv venv --python 3.12 && uv sync` |
+| `pydantic-core` build fails | Python 3.14 not supported (PyO3 max 3.13). Use 3.12: `uv python install 3.12 && uv venv --python 3.12 && uv sync` |
 | Smoke test fails with OpenAPI diff | Run `uv run python scripts/export_openapi.py` and commit |
 | `uv` not found | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | Server won't start | Check tmux `dimple-server`. Port 8000 may be held by old process. |

@@ -80,6 +80,12 @@ reports drift that isn't real. If you change a dependency, run `uv lock` and
 `uv export --format requirements-txt --no-hashes --no-dev -o requirements.txt`,
 then commit both alongside `uv.lock`.
 
+**Python version:** 3.12 only. `pydantic-core` fails to build on 3.14 (PyO3 max
+3.13). If `uv` picks up system Python 3.14, fix with:
+```bash
+uv python install 3.12 && uv venv --python 3.12 && uv sync
+```
+
 ## Verify before you hand back
 
 ```bash
