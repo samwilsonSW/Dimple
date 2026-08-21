@@ -38,8 +38,13 @@ struct RoundSetupView: View {
                 .font(.title3).fontWeight(.bold)
             HStack(spacing: 6) {
                 if !selection.location.isEmpty { Text(selection.location) }
-                Text("•")
-                Text("\(selection.tee.teeName) tees")
+                if let tee = selection.tee {
+                    Text("•")
+                    Text("\(tee.teeName) tees")
+                } else {
+                    Text("•")
+                    Text("Par \(selection.holes.reduce(0) { $0 + $1.par })")
+                }
             }
             .font(.subheadline)
             .foregroundStyle(Color(.secondaryLabel))
@@ -84,7 +89,7 @@ struct RoundSetupView: View {
             Text("How many holes?")
                 .font(.subheadline).fontWeight(.semibold)
                 .foregroundStyle(Color(.secondaryLabel))
-            ForEach(RoundMode.allCases) { m in
+            ForEach(RoundMode.available(for: selection.holes)) { m in
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     mode = m
@@ -102,9 +107,9 @@ struct RoundSetupView: View {
                 .foregroundStyle(selected ? .white : Color.forestGreen)
                 .frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
-                Text(m.title).font(.headline)
+                Text(m.title(for: selection.holes)).font(.headline)
                     .foregroundStyle(selected ? .white : Color(.label))
-                Text(m.subtitle).font(.caption)
+                Text(m.subtitle(for: selection.holes)).font(.caption)
                     .foregroundStyle(selected ? Color.white.opacity(0.85) : Color(.secondaryLabel))
             }
             Spacer()

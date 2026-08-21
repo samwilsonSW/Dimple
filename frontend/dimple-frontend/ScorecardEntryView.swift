@@ -21,11 +21,12 @@ struct HoleState: Identifiable, Hashable {
 
 @Observable
 final class ScorecardViewModel {
-    let courseId: String
+    let courseId: String?          // nil for a manually entered course
     let courseName: String
     let city: String?
     let state: String?
-    let teeBox: TeeBox
+    let teeBox: TeeBox?            // nil for a manually entered course
+    let manualCourse: ManualCourse?
     let holeTemplate: [HoleInfo]
     let handicapIndex: Double
     let roundDate: String
@@ -46,7 +47,7 @@ final class ScorecardViewModel {
         let sel = start.selection
         courseId = sel.courseId; courseName = sel.courseName
         city = sel.city; state = sel.state
-        teeBox = sel.tee; holeTemplate = sel.holes
+        teeBox = sel.tee; manualCourse = sel.manualCourse; holeTemplate = sel.holes
         handicapIndex = start.handicapIndex; roundDate = start.roundDate; mode = start.mode
 
         let nums = start.mode.holeNumbers(in: sel.holes)
@@ -63,7 +64,7 @@ final class ScorecardViewModel {
     init(draft: DraftRound) {
         courseId = draft.courseId; courseName = draft.courseName
         city = draft.city; state = draft.state
-        teeBox = draft.teeBox; holeTemplate = draft.holeTemplate
+        teeBox = draft.teeBox; manualCourse = draft.manualCourse; holeTemplate = draft.holeTemplate
         handicapIndex = draft.handicapIndex; roundDate = draft.roundDate; mode = draft.mode
 
         let nums = draft.mode.holeNumbers(in: draft.holeTemplate)
@@ -183,7 +184,8 @@ final class ScorecardViewModel {
         }
         let draft = DraftRound(
             courseId: courseId, courseName: courseName, city: city, state: state,
-            teeBox: teeBox, holeTemplate: holeTemplate, handicapIndex: handicapIndex,
+            teeBox: teeBox, manualCourse: manualCourse,
+            holeTemplate: holeTemplate, handicapIndex: handicapIndex,
             roundDate: roundDate, mode: mode, currentHoleNumber: currentHoleNumber,
             holes: entries, lastSaved: Date()
         )
@@ -205,7 +207,8 @@ final class ScorecardViewModel {
             let resp = try await RoundService.shared.submit(
                 courseId: courseId,
                 course: CoursePayload(name: courseName, city: city, state: state),
-                teeBox: TeeBoxPayload(tee_name: teeBox.teeName, rating: teeBox.rating, slope: teeBox.slope),
+                teeBox: teeBox.map { TeeBoxPayload(tee_name: $0.teeName, rating: $0.rating, slope: $0.slope) },
+                manualCourse: manualCourse.map { ManualCoursePayload(holes: $0.holes, par_values: $0.parValues) },
                 handicapIndex: handicapIndex,
                 roundDate: roundDate,
                 holes: payloadHoles

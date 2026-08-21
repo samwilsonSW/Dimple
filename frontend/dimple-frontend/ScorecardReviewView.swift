@@ -34,9 +34,16 @@ struct ScorecardReviewView: View {
     private var courseHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(vm.courseName).font(.title3).fontWeight(.bold)
-            Text("\(vm.teeBox.teeName) tees · \(displayDate(vm.roundDate))")
+            Text(subheading)
                 .font(.subheadline).foregroundStyle(Color(.secondaryLabel))
         }
+    }
+
+    /// Manual courses have no tee box — fall back to the location.
+    private var subheading: String {
+        let lead = vm.teeBox.map { "\($0.teeName) tees" }
+            ?? [vm.city, vm.state].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", ")
+        return lead.isEmpty ? displayDate(vm.roundDate) : "\(lead) · \(displayDate(vm.roundDate))"
     }
 
     // MARK: Table

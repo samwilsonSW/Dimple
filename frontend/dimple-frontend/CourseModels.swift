@@ -125,19 +125,48 @@ struct CourseDetailResponse: Decodable {
 
 // MARK: - Round Handoff
 //
-// Produced when the player picks a course + tee. Consumed by the Scorecard
-// Entry View (next task) to seed `course_id`, the selected tee, and the
-// per-hole template (par/yardage) for the `POST /api/v1/rounds` payload.
+// Produced when the player picks a course + tee, or enters one by hand. Consumed
+// by the Scorecard Entry View to seed the per-hole template (par/yardage) and
+// the `POST /api/v1/rounds` payload.
+//
+// Manual courses have no `courseId` and no `tee`: the backend rejects
+// `manual_course` alongside `course_id`, and there is no rating/slope to send.
 
 struct RoundCourseSelection: Hashable {
-    let courseId: String
+    let courseId: String?
     let courseName: String
     let city: String?
     let state: String?
-    let tee: TeeBox
+    let tee: TeeBox?
     let holes: [HoleInfo]
+    let manualCourse: ManualCourse?
+
+    var isManual: Bool { manualCourse != nil }
 
     var location: String {
         [city, state].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: ", ")
+    }
+
+    init(courseId: String?, courseName: String, city: String?, state: String?,
+         tee: TeeBox?, holes: [HoleInfo], manualCourse: ManualCourse? = nil) {
+        self.courseId = courseId
+        self.courseName = courseName
+        self.city = city
+        self.state = state
+        self.tee = tee
+        self.holes = holes
+        self.manualCourse = manualCourse
+    }
+
+    init(manual: ManualCourse) {
+        self.init(
+            courseId: nil,
+            courseName: manual.name,
+            city: manual.city,
+            state: manual.state,
+            tee: nil,
+            holes: manual.holeTemplate,
+            manualCourse: manual
+        )
     }
 }

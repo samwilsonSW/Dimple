@@ -19,6 +19,11 @@ struct NewRoundView: View {
                         path.append(selection)
                     }
                 }
+                .navigationDestination(for: ManualCourseRoute.self) { _ in
+                    ManualCourseEntryView { selection in
+                        path.append(selection)
+                    }
+                }
                 .navigationDestination(for: RoundCourseSelection.self) { selection in
                     RoundSetupView(selection: selection) { start in
                         scorecardVM = ScorecardViewModel(start: start)
