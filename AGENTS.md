@@ -157,6 +157,27 @@ matches the contract, whether the smoke test passes. Answer those yourself.
 
 ---
 
+## Frontend (SwiftUI)
+
+SwiftUI views live in `frontend/dimple-frontend/`. Key files:
+- `NewRoundView.swift` — round creation flow
+- `CourseSearchView.swift` — course search + selection
+- `ScorecardView.swift` — per-hole scorecard entry
+- `RoundHistoryView.swift` — round list + stats
+- `CoachChatView.swift` — coach conversation
+- `Services/` — `CourseService.swift`, `RoundService.swift`, `CoachService.swift`
+
+Patterns:
+- Services are async/await, throw on error
+- Views use `@State` + `Task` for async loads
+- Backend URL: `https://dimple-api.chokepointmonitor.com` (production) or `http://localhost:8000` (dev)
+- Auth: Supabase JWT passed in `Authorization` header
+
+Testing:
+- Simulator: `Cmd-R` in Xcode, select iPhone target
+- Device: requires paid Apple Developer account + TestFlight (~15-30 min loop)
+- Expo Go is ~30s for coach lab, but Swift is the v1.0.0 product
+
 ## Product principle
 
 Make scorecard mode so good that players *want* to upgrade to shot-by-shot

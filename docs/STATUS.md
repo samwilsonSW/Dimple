@@ -48,4 +48,11 @@ Everything else is negotiable.
 
 ---
 
-*Last updated: 2026-08-13*
+*Last updated: 2026-08-20*
+
+## This Week
+
+- PR #18 merged — CI on every push/PR to Kanary (7/7 green)
+- Swift v1.0.0 confirmed as ship target. Expo stays coach lab.
+- Memory cleaned up — old notes archived, MEMORY.md rewritten to current reality
+- Server fixed — Python 3.12 (was 3.14, broke pydantic-core)
