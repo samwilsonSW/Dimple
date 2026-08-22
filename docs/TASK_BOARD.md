@@ -6,24 +6,25 @@
 
 ## Active
 
-### 1. Course Selection Bug Fix (bug #3)
-**Status:** Root cause fixed in PR #19, needs a device re-test  
+### 1. Course Selection Bug Fix (bug #3) — DONE
+**Status:** Fixed and verified. Start Round lands on hole 1 on the first tap.  
 **What:** Start Round had to be tapped twice. `a256d84` treated the symptom —
 it swapped a path reset for a spinner, so instead of being kicked back to
 search you got a spinner that never resolved. Same race underneath: the
 scorecard VM was written to `@State` and the route pushed in one closure, so
 the destination built before the write landed and SwiftUI never rebuilt it.  
 **Where:** `NewRoundView.swift` — VM now lives in a `RoundFlow` reference box  
-**Next:** Device test — Start Round should go straight to hole 1 on the first tap,
-on both the API-course and manual-course paths
+**Why it stayed broken:** the fix is deterministic — the VM now lives in one
+long-lived object, so the destination reads it in the same transaction that
+writes it. Nothing left to race.
 
 ---
 
 ## v1.0.0 Checklist
 
-- [ ] Verify course selection bug fix
+- [x] Verify course selection bug fix
 - [x] Build manual course entry frontend
-- [ ] Test on device
+- [x] Test on device
 - [ ] Merge `Kanary` → `main`, tag `v1.0.0`
 
 ---
