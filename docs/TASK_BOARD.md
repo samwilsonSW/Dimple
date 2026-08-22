@@ -6,11 +6,16 @@
 
 ## Active
 
-### 1. Course Selection Bug Fix
-**Status:** Fix committed, needs verification  
-**What:** After selecting tees, user gets kicked back to search. Should go to hole 1.  
-**Where:** `NewRoundView.swift`, `CourseTeePickerView.swift`  
-**Next:** Simulator test, confirm no path reset
+### 1. Course Selection Bug Fix (bug #3)
+**Status:** Root cause fixed in PR #19, needs a device re-test  
+**What:** Start Round had to be tapped twice. `a256d84` treated the symptom —
+it swapped a path reset for a spinner, so instead of being kicked back to
+search you got a spinner that never resolved. Same race underneath: the
+scorecard VM was written to `@State` and the route pushed in one closure, so
+the destination built before the write landed and SwiftUI never rebuilt it.  
+**Where:** `NewRoundView.swift` — VM now lives in a `RoundFlow` reference box  
+**Next:** Device test — Start Round should go straight to hole 1 on the first tap,
+on both the API-course and manual-course paths
 
 ---
 

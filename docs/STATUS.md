@@ -20,8 +20,8 @@
 - AI Coach chat (conversational, data-aware)
 
 ### In Progress
-- Manual course entry (backend + frontend built, needs simulator verification)
-- Course selection bug fix (committed, needs simulator verification)
+- Manual course entry (verified on device 22 Aug — full round entered end to end)
+- Course selection bug fix (bug #3 root cause fixed in PR #19, needs device re-test)
 - Auto-chat-titles (built, ready to merge)
 
 ### Blocked / Deferred
