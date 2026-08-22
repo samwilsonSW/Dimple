@@ -7,22 +7,102 @@
 
 ---
 
-## Claude Code — Current Task
+## Claude Code — Current Task (2026-08-11 — v1.0.0 push)
 
-- **Task:** Phase B — Conversational Coach Chat UI
-- **Status:** Ready to start — Kanary Phase A backend complete and tested
-- **Branch:** Kanary (working branch — main is release, Kanary is where we build)
-- **Last completed:** Round History List (PR #9, merged 2026-06-27)
-- **Next up:** Implement `CoachChatView`, `ConversationListView`, message threading per `docs/COACH_REWORK_SPEC.md`
+- **Task:** v1.0.0 — two features (manual course entry + course selection bug fix), then ship. Coach loading indicator **parked post-v1.0.0** per Duk.
+- **Working branch:** `feature/v1-frontend-fixes` (off `Kanary`) → PR into `Kanary`,
+  Duk merges. Per Chrollo plan: features land via PRs into Kanary, no racing the branch.
+- **Build:** green (xcodebuild, generic iOS Simulator) after every change below.
 
-**Backend Status (from Kanary):**
-- ✅ `POST /api/v1/coach/chat` — working, tested with real data
-- ✅ `GET /api/v1/coach/conversations` — ready
-- ✅ `GET /api/v1/coach/conversations/{id}/messages` — ready
-- ✅ Data-source-aware prompts (no hallucinations when data is thin)
-- ✅ Conversation persistence in database
+**Committed on `feature/v1-frontend-fixes` (pushed):**
+- 🔴→🟢 **Base URL fixed.** All 4 services pointed at a dead ephemeral tunnel
+  (`evidence-dialogue-chronicle-officers.trycloudflare.com` — DNS no longer resolves;
+  this URL was still committed on `Kanary`). Swapped all 4 → the stable named tunnel
+  `https://dimple-api.chokepointmonitor.com` (verified live, 200). **Nothing
+  connected before this.**
+- ⚠️ **Feature #2 (Coach loading indicator) — PARTIAL, indicator PARKED per Duk.**
+  Shipped: `CoachError` classification in `CoachService` → friendly copy for
+  timeout / connection-lost / offline / 500 (replaces raw "Network connection was
+  lost"). **Known bug:** the pre-existing "Analyzing your game…" typing indicator
+  does **not** render at runtime — confirmed on-device by Duk (zero indicator on
+  new *and* existing chats, even after a clean build). The request itself works
+  (Duk got a confidence-4 answer), so `isSending` is true the whole wait but the
+  `typingBubble` branch isn't drawing — a view/rendering issue, not a request
+  failure. Debug logging (`COACHLOG`) was added then reverted; tree is clean.
+  **Deprioritized by Duk — do not spend energy here right now.**
+
+**In progress (NOT committed — working tree only):**
+- 🟡 **Bug #3 (course-selection kickback).** Instrumented `NewRoundView` with
+  `NAVLOG` tracing (DEBUG-only) + hardened the one destructive line: the
+  `routeView` fallback no longer resets the nav path to root when the scorecard VM
+  is momentarily nil (that reset == the "kicked back to search" symptom). Held out
+  of the commit until a simulator run + `NAVLOG` console paste confirms the fix;
+  debug logging will be stripped before it lands.
+  
+  **Next step for Duk:** Run simulator, check console for `NAVLOG` output, confirm
+  no path reset on tee selection. If clean, commit and push.
+
+**Backend shipped — Kanary completed (2026-08-06):**
+- ✅ **Feature #1 (Manual Course Entry).** Backend live and verified:
+  - Migration 019 applied: `manual_course` JSONB column on `rounds`
+  - `POST /api/v1/rounds` accepts `manual_course` field (embedded, no new endpoint)
+  - Validation: mutual exclusivity with `course_id` (422), rejects `shots` (422)
+  - `calculate_round_stats` uses `manual_par_values` for strokes_over_under
+  - `API_CONTRACT.md` updated to v0.7.1
+  - All three validation cases verified live against tunnel
+- **Frontend unblocked.** Claude Code can now build `ManualCourseEntryView` and wire to `POST /rounds`.
+
+### Kanary — action needed (contract is yours; I'm proposing, not editing)
+- ✅ **Manual Course Entry backend complete.** Frontend is scoped and ready. No further backend work needed.
+- **FYI (no contract change):** tonight's frontend commits change no request/response
+  shape — just the base URL (not in the contract) and client-side error copy.
+- ⏱️ **Coach latency is a UX problem (your lane).** Measured live 2026-08-05:
+  "Where am I losing strokes?" took **1m35s**. Duk parked the loading indicator
+  for post-v1.0.0 — real fix is backend streaming/async. Not blocking release.
+
+**Backend Status (verified live against the new tunnel):**
+- ✅ `POST /api/v1/coach/chat` — verified 200, response shape matches models (zero-data fallback exercised: confidence 1, follow-up question, no drills)
+- ✅ `GET /api/v1/coach/conversations` — verified 200, shape matches
+- ✅ `GET /api/v1/coach/conversations/{id}/messages` — **FIXED & verified 200** (see below). **Requires `user_id` query param** (contract doc omits it; `main.py` enforces it → 422 without it). Frontend sends it.
 - ⚠️ Confidence score: LLM overrides data-richness calc. Under observation.
-- ⚠️ iOS connection issue (July 9) still open — may block testing
+
+### ✅ Backend bug found during Phase B integration — RESOLVED (Kanary)
+`GET /api/v1/coach/conversations/{id}/messages` was returning **502** every call.
+- **Root cause:** `backend/app/main.py:747` used `.order("created_at", asc=True)`. supabase-py 2.x `order()` has no `asc` kwarg → raised → caught as HTTPException 502. Only `.order()` in the file using `asc=`; siblings use `desc=` and returned 200.
+- **Fix:** Kanary committed `ff423aa` → `.order("created_at")`. Merged (fast-forward) into local Kanary. Backend restarted on M1.
+- **Verified:** endpoint now returns 200 with chronological (user→assistant) ordering; shape decodes into `ConversationMessagesResponse`. Full Phase B flow unblocked end-to-end.
+
+### 🐞 Coach chat unreliable on follow-up messages — found 2026-07-14
+**Symptom (Duk, simulator):** "Couldn't reach coach" on the 3rd message of a conversation.
+**Root cause is backend/Supabase slowness**, which surfaces as **two distinct failure modes** (both on the continue-conversation path):
+
+1. **Backend 500 (fast fail):** `HTTP 500 in ~18s`, body `{"detail":"Failed to fetch conversation: [Errno 60] Operation timed out"}`. The `.single()` conversation-verify query (`main.py:561`) — which runs **only when `conversation_id` is passed**, i.e. every message after the first — times out talking to Supabase. Explains why msg 1 (new convo, no verify) works and msg 3 fails.
+2. **Client cancel (slow fail):** tunnel logs `Request failed error="Incoming request ended abruptly: context canceled" ... dest=.../coach/chat`. That's the **iOS app closing the connection** because the backend took **>60s** (the app's old default URLSession timeout) — a client-side timeout, not a backend error.
+
+Both trace to the same thing: **Supabase calls from the M1 are intermittently very slow / timing out.**
+- **Evidence of intermittency (same minute):** `GET /messages` 200 in 1.1s; `POST` new convo 200 but **27.8s**; `POST` continue → 500 @18s; `GET /conversations` failed @24.7s. Not a clean outage — flaky latency.
+- **Likely factors (Kanary to investigate):** Supabase free-tier throttle/cold connections, supabase-py client connection reuse (no pooling/keepalive → cold TLS each call), or M1→Supabase network. The `.single()` verify is fragile — one transient timeout 500s the whole turn.
+- **Suggested backend directions:** add retry/backoff on Supabase calls; reuse/pool the client connection; make the conversation-verify non-fatal (or skip re-verify when the user owns the convo); confirm the Supabase project isn't throttled/paused.
+- **Owner:** Kanary (backend / Phase A). Not touched by Claude Code.
+
+**Frontend hardening done (Claude Code, my lane):** bumped `CoachService.send()` request timeout 60s→**180s** — directly fixes failure mode #2 (the app no longer cancels at 60s, so a slow-but-successful reply completes). Does **not** fix #1 (the backend 500s) — that's Kanary's. Uncommitted; needs a rebuild to take effect (Duk deferred re-testing for now).
+**Deferred (Duk, 2026-07-14):** friendlier long-wait copy ("coach is taking longer than usual…") — leave as-is for now.
+
+## Progress — Phase B Conversational Coach Chat UI (BUILT)
+
+- [x] `CoachChatModels.swift` — `ChatMessage` (UI) + decodable DTOs (`CoachChatResponse`, `ConversationSummary`, `ConversationMessagesResponse`); reuses `DrillRecommendation`
+- [x] `CoachService.swift` — rewritten for chat: `send()` (→ `/coach/chat`), `fetchConversations()`, `fetchMessages()` (sends required `user_id`). Old `/coach/ask` removed.
+- [x] `CoachChatView.swift` — threaded bubble chat (user right / coach left), confidence bar, key-insights block, expandable drill cards in coach bubbles, typing indicator, scroll-to-bottom, inline error bubble + Retry, multi-turn threading via `conversation_id`, zero-data suggested prompts. `CoachChatSheet` wrapper for modal presentation.
+- [x] `ConversationListView.swift` — Coach tab root: past conversations (loading/empty/error/loaded), pull-to-refresh, New Chat, tap → open thread.
+- [x] Entry points: Coach tab (list), Round detail "Ask Coach about this round" (sheet, `round_id`), post-submit summary "Chat with Coach about this round" (sheet, `round_id` now threaded through `ScorecardViewModel`).
+- [x] Old single-shot `CoachView`/`CoachViewModel` removed; shared tokens (`Color` ext, `BouncingDots`, `FlowLayout`) preserved in `CoachView.swift`.
+- [x] Accessibility: VoiceOver labels on user/coach/error bubbles, confidence, drill cards, conversation cards.
+- [x] Build green (xcodebuild, generic iOS Simulator).
+- [ ] On-device taste test (Duk).
+- [ ] Backend messages-endpoint 502 fix (Kanary) — needed for the "view saved conversation" acceptance criterion.
+
+### Superseded — old backend status block
+- ⚠️ iOS connection issue (July 9): root cause was a paused Supabase project + rotating tunnel URL, not app code. New tunnel URL wired in.
 
 ## Progress — Round History List (COMPLETE)
 
@@ -69,6 +149,25 @@
 ## Blockers
 
 - None. All known issues resolved (PR #10, PR #11, migration 015 applied).
+
+## Duk's Next Session Checklist (when back at Mac)
+
+1. **Verify course selection bug fix:**
+   - Open Xcode, run simulator
+   - Search course → select tee → confirm NOT kicked back to search
+   - Check console for `NAVLOG` output, confirm no path reset
+   - If clean: tell Claude Code to strip `NAVLOG` and commit
+
+2. **Kick off Manual Course Entry frontend:**
+   - Tell Claude Code to pick up `[CC] 1. Manual Course Entry` from TASK_BOARD.md
+   - Spec: `docs/MANUAL_COURSE_ENTRY_SPEC.md`
+   - Backend contract: `API_CONTRACT.md` v0.7.1
+
+3. **Test on device** once both features land
+
+4. **Screenshots + demo video** for README
+
+5. **Ship:** Merge `feature/v1-frontend-fixes` → `Kanary` → `main`, tag `v1.0.0`
 
 ## New Issue for Claude Code — iOS App Cannot Connect to Backend
 

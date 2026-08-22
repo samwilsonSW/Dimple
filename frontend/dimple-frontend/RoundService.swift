@@ -6,13 +6,17 @@ import Supabase
 /// lowercased user_id (match_shots is case-sensitive — see API_CONTRACT).
 final class RoundService {
     static let shared = RoundService()
-    private let baseURL = "http://localhost:8000"
+    private let baseURL = "https://dimple-api.chokepointmonitor.com"
 
     /// Builds the payload (injecting user_id + totals) and POSTs to /api/v1/rounds.
+    ///
+    /// `courseId`/`teeBox` and `manualCourse` are mutually exclusive — the
+    /// backend rejects a payload carrying both with a 422.
     func submit(
-        courseId: String,
+        courseId: String?,
         course: CoursePayload,
         teeBox: TeeBoxPayload?,
+        manualCourse: ManualCoursePayload?,
         handicapIndex: Double,
         roundDate: String,
         holes: [HolePayload]
@@ -30,6 +34,7 @@ final class RoundService {
             handicap_index: handicapIndex,
             course_id: courseId,
             tee_box: teeBox,
+            manual_course: manualCourse,
             hole_data: holes,
             total_score: totalScore,
             total_putts: totalPutts

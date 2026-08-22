@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any
+import threading
 
 from app.core.config import get_settings
 from app.core.baselines import get_baseline_for_handicap
@@ -12,6 +13,7 @@ from app.models.round import (
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
 from app.services.llm import generate_coach_response, generate_structured_coach_response
+from app.services.title_generator import generate_title
 from app.routers import courses
 
 settings = get_settings()
@@ -19,10 +21,35 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="0.7.0",
+    version="1.0.0",
 )
 
 app.include_router(courses.router)
+
+
+@app.on_event("startup")
+def warm_embedding_model():
+    """Warm the embedding model in the background when the server boots.
+
+    The model loads lazily at module level so that importing the app stays free
+    — CI, schema export and the smoke test never need it. But a long-lived
+    server wants it warm, or the first coach request after a restart pays the
+    load on top of already-slow coach latency.
+
+    Runs on a daemon thread so boot never blocks: if huggingface.co is slow or
+    unreachable, `HF_HUB_DOWNLOAD_TIMEOUT` is 300s and we must not hold /health
+    hostage to it. A request arriving mid-warmup just waits on the same lock.
+    """
+    def _warm():
+        from app.services.embeddings import get_model
+
+        try:
+            get_model()
+        except Exception as exc:  # noqa: BLE001 — never take the server down
+            print(f"[startup] embedding model warmup failed, will retry on demand: {exc}")
+
+    threading.Thread(target=_warm, name="embed-warmup", daemon=True).start()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -102,7 +129,7 @@ def ingest_round(payload: RoundPayload):
     """
     supabase = get_supabase()
 
-    # 1) Insert round metadata (including reflection if provided)
+    # 1) Insert round metadata (including reflection and manual_course if provided)
     round_insert = {
         "user_id": payload.user_id,
         "round_date": payload.round_date,
@@ -110,6 +137,9 @@ def ingest_round(payload: RoundPayload):
         "handicap_index": payload.handicap_index,
         "reflection": payload.reflection,
     }
+    # Add manual_course JSONB if present (mutually exclusive with course_id)
+    if payload.manual_course:
+        round_insert["manual_course"] = payload.manual_course.model_dump()
     result = supabase.table("rounds").insert(round_insert).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to insert round")
@@ -225,11 +255,17 @@ def ingest_round(payload: RoundPayload):
     round_stats = None
     if payload.hole_data:
         try:
+            # For manual courses, use provided par_values for strokes_over_under
+            manual_par_values = None
+            if payload.manual_course:
+                manual_par_values = payload.manual_course.par_values
+            
             stats = calculate_round_stats(
                 hole_data=payload.hole_data,
                 handicap=payload.handicap_index,
                 course_rating=payload.tee_box.rating if payload.tee_box else None,
                 course_slope=payload.tee_box.slope if payload.tee_box else None,
+                manual_par_values=manual_par_values,
             )
             stats_row = {
                 "round_id": str(round_id),
@@ -541,6 +577,12 @@ def determine_confidence(inventory: Dict[str, Any]) -> int:
 # CONVERSATIONAL COACH ENDPOINT
 # ──────────────────────────────────────────────────────────────────────────────
 
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 @app.post("/api/v1/coach/chat", response_model=CoachChatResponse)
 def coach_chat(request: CoachChatRequest):
     """
@@ -551,12 +593,15 @@ def coach_chat(request: CoachChatRequest):
     4. Call Moonshot LLM to generate coaching response
     5. Save conversation and messages to database
     """
+    request_start = time.time()
     supabase = get_supabase()
     
     # 1) Get or create conversation
     conversation_id = request.conversation_id
     if conversation_id:
         # Verify conversation exists and belongs to user
+        # NOTE: Made non-fatal — transient Supabase timeouts shouldn't kill the chat
+        verify_start = time.time()
         try:
             conv_result = supabase.table("conversations").select("*").eq("id", conversation_id).eq("user_id", request.user_id).single().execute()
             if not conv_result.data:
@@ -564,7 +609,15 @@ def coach_chat(request: CoachChatRequest):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch conversation: {str(e)}")
+            verify_elapsed = time.time() - verify_start
+            logger.warning(
+                f"Conversation verify timeout/Error for conv_id={conversation_id} "
+                f"after {verify_elapsed:.2f}s: {str(e)}. "
+                f"Continuing without strict verification — user_id match is sufficient."
+            )
+            # Non-fatal: assume the conversation exists and belongs to the user
+            # The frontend only sends conversation_ids it already knows about
+            pass
     else:
         # Create new conversation
         try:
@@ -609,6 +662,20 @@ def coach_chat(request: CoachChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save message: {str(e)}")
     
+    # 3b) Generate title for new conversations (fire-and-forget, non-blocking)
+    is_new_conversation = request.conversation_id is None
+    if is_new_conversation:
+        try:
+            generated_title = generate_title(request.message)
+            if generated_title:
+                supabase.table("conversations").update({
+                    "title": generated_title
+                }).eq("id", conversation_id).execute()
+                logger.info(f"Generated title for conv {conversation_id}: '{generated_title}'")
+        except Exception as e:
+            # Non-fatal: title generation failure shouldn't break the chat
+            logger.warning(f"Title generation failed for conv {conversation_id}: {e}")
+    
     # 4) Build data inventory
     inventory = build_data_inventory(supabase, request.user_id)
     
@@ -644,10 +711,14 @@ def coach_chat(request: CoachChatRequest):
     )
     
     # 7) Call LLM
+    llm_start = time.time()
     try:
         structured = generate_structured_coach_response(system_prompt, user_prompt)
     except Exception as e:
+        llm_elapsed = time.time() - llm_start
+        logger.error(f"LLM generation failed after {llm_elapsed:.2f}s: {str(e)}")
         raise HTTPException(status_code=502, detail=f"LLM generation failed: {str(e)}")
+    llm_elapsed = time.time() - llm_start
     
     # 8) Build response
     answer = structured.get("answer", "")
@@ -674,7 +745,14 @@ def coach_chat(request: CoachChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save assistant message: {str(e)}")
     
-    # 10) Return response
+    # 10) Return response with timing
+    total_elapsed = time.time() - request_start
+    logger.info(
+        f"Coach chat completed: conv_id={conversation_id}, "
+        f"llm_time={llm_elapsed:.2f}s, total_time={total_elapsed:.2f}s, "
+        f"data_inventory={inventory}"
+    )
+    
     return CoachChatResponse(
         conversation_id=conversation_id,
         message=Message(

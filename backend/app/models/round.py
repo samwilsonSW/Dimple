@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 
 
@@ -136,6 +136,27 @@ class TeeBox(BaseModel):
     slope: Optional[int] = None
 
 
+class ManualCourse(BaseModel):
+    """User-entered course data for rounds not in GolfCourseAPI.com."""
+    holes: int = Field(..., ge=9, le=18, description="9 or 18 holes")
+    par_values: List[int] = Field(..., description="Per-hole par values, count must equal holes")
+    
+    @field_validator("par_values")
+    @classmethod
+    def validate_par_values(cls, v: List[int], info) -> List[int]:
+        holes = info.data.get("holes")
+        if holes is not None and len(v) != holes:
+            raise ValueError(f"par_values count ({len(v)}) must equal holes ({holes})")
+        for i, par in enumerate(v):
+            if par not in (3, 4, 5):
+                raise ValueError(f"par_values[{i}] = {par} must be 3, 4, or 5")
+        return v
+    
+    @property
+    def total_par(self) -> int:
+        return sum(self.par_values)
+
+
 class RoundPayload(BaseModel):
     user_id: str
     round_date: str
@@ -153,12 +174,27 @@ class RoundPayload(BaseModel):
     hole_data: Optional[List[HoleResult]] = None
     total_score: Optional[int] = None
     total_putts: Optional[int] = None
+    # --- Manual course entry (alternative to API course) ---
+    manual_course: Optional[ManualCourse] = Field(
+        None,
+        description="User-entered course data. Mutually exclusive with course_id/tee_box."
+    )
     # --- Full shot-by-shot mode (existing) ---
     shots: Optional[List[ShotModel]] = None
     reflection: Optional[str] = Field(
         None,
         description="Player's 3-5 sentence reflection on the round. What stood out, what was good/bad, tendencies noticed."
     )
+
+    @model_validator(mode="after")
+    def validate_manual_course_rules(self):
+        """Validate mutual exclusivity and shot restrictions for manual courses."""
+        if self.manual_course is not None:
+            if self.course_id is not None:
+                raise ValueError("manual_course and course_id are mutually exclusive")
+            if self.shots is not None and len(self.shots) > 0:
+                raise ValueError("shots cannot be provided with manual_course (no yardage data)")
+        return self
 
 
 class CoachQuery(BaseModel):
@@ -179,6 +215,14 @@ class Message(BaseModel):
     role: str = Field(..., description="'user' or 'assistant'")
     content: str
     created_at: Optional[str] = None
+
+
+class DrillRecommendation(BaseModel):
+    priority: int = Field(..., description="Priority order: 1 = highest")
+    focus_area: str = Field(..., description="e.g. '6-iron push', 'lag putting'")
+    drill_name: str = Field(..., description="Name of the drill")
+    instructions: str = Field(..., description="Step-by-step drill instructions")
+    expected_outcome: str = Field(..., description="What success looks like")
 
 
 class CoachChatResponse(BaseModel):
@@ -210,14 +254,6 @@ class ConversationSummary(BaseModel):
     message_count: int = 0
     last_message_at: Optional[str] = None
     preview: Optional[str] = None
-
-
-class DrillRecommendation(BaseModel):
-    priority: int = Field(..., description="Priority order: 1 = highest")
-    focus_area: str = Field(..., description="e.g. '6-iron push', 'lag putting'")
-    drill_name: str = Field(..., description="Name of the drill")
-    instructions: str = Field(..., description="Step-by-step drill instructions")
-    expected_outcome: str = Field(..., description="What success looks like")
 
 
 class CoachResponse(BaseModel):

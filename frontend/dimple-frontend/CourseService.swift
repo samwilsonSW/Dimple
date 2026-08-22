@@ -5,7 +5,7 @@ import Supabase
 /// same base URL, and an authenticated session for the bearer token.
 class CourseService {
     static let shared = CourseService()
-    private let baseURL = "http://localhost:8000"
+    private let baseURL = "https://dimple-api.chokepointmonitor.com"
 
     /// `GET /api/v1/courses/search?q={query}&limit={limit}`
     func search(query: String, limit: Int = 10) async throws -> [Course] {

@@ -105,12 +105,16 @@ Kanary's unprompted pings are what make Duk an orchestrator instead of a poller 
 | Feature | Backend | Frontend | Status |
 |---------|---------|----------|--------|
 | Course Search | ✅ | ✅ | Complete — search, select, tee picker working |
-| Scorecard Entry | ✅ Schema | 🔄 | Next up — Claude Code building now |
+| Scorecard Entry | ✅ | ✅ | Complete — per-hole entry, draft auto-save, submit |
+| Round History | ✅ | ✅ | Complete — scrollable cards, SG chips, pull-to-refresh |
+| AI Coach (Conversational) | ✅ | ✅ | Complete — Phase A + Phase B merged to Kanary |
+| Coach Reliability | ✅ | — | Fixed — connection pooling, non-fatal verify, 120s timeout |
+| Auto-Chat-Titles | ✅ | ✅ | Built — inline + background generation, ready to merge |
+| Manual Course Entry | 📝 Spec | — | Spec drafted, pending Duk review |
 | Voice Memo | ❌ | ❌ | Cancelled per Duk taste |
-| Round History | ✅ | ❌ | Blocked on scorecard entry |
-| AI Coach | ✅ | ✅ | Working (frontend now sends authenticated, lowercased `user_id`) |
+| Quick Round | ❌ | ❌ | Cancelled per Duk taste |
 
-**Open risks to track:** LLM thinking-mode latency vs the iOS ~60s request timeout; `match_shots` is case-sensitive on `user_id`.
+**Open risks to track:** Submit idempotency (backlog); swipe-to-delete needs backend DELETE endpoint.
 
 ---
 

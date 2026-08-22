@@ -252,6 +252,7 @@ private struct SGChip: View {
 
 struct RoundDetailView: View {
     let round: RoundHistoryItem
+    @State private var showCoach = false
 
     var body: some View {
         ScrollView {
@@ -270,6 +271,8 @@ struct RoundDetailView: View {
                 .frame(maxWidth: .infinity).padding(.vertical, 20)
                 .background(Color.forestGreen.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                askCoachButton
 
                 if let s = round.stats {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -304,6 +307,23 @@ struct RoundDetailView: View {
         }
         .navigationTitle(round.course.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showCoach) {
+            CoachChatSheet(roundID: round.id, title: "Coach · \(round.course.displayName)")
+        }
+    }
+
+    private var askCoachButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            showCoach = true
+        } label: {
+            Label("Ask Coach about this round", systemImage: "bubble.left.and.text.bubble.right")
+                .font(.body).fontWeight(.semibold).foregroundStyle(.white)
+                .frame(maxWidth: .infinity).frame(height: 52)
+                .background(Color.forestGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func statCard(_ title: String, _ value: String) -> some View {

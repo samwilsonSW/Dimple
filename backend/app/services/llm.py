@@ -56,6 +56,7 @@ def _log_response(raw_response: str, parsed: dict | None = None, usage: dict | N
 moonshot_client = openai.OpenAI(
     api_key=settings.moonshot_api_key,
     base_url="https://api.moonshot.ai/v1",
+    timeout=120.0,
 )
 
 # ORIGINAL generator (No coach response)

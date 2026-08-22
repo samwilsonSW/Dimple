@@ -3,7 +3,10 @@ import SwiftUI
 struct RoundSummaryView: View {
     let stats: RoundStats?
     let courseName: String
+    var roundID: Int? = nil
     let onDone: () -> Void
+
+    @State private var showCoach = false
 
     var body: some View {
         ScrollView {
@@ -17,6 +20,9 @@ struct RoundSummaryView: View {
                         .font(.subheadline).foregroundStyle(Color(.secondaryLabel))
                         .multilineTextAlignment(.center)
                 }
+                if roundID != nil {
+                    askCoachButton
+                }
             }
             .padding()
             .padding(.bottom, 24)
@@ -25,6 +31,23 @@ struct RoundSummaryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .safeAreaInset(edge: .bottom) { doneBar }
+        .sheet(isPresented: $showCoach) {
+            CoachChatSheet(roundID: roundID, title: "Coach · \(courseName)")
+        }
+    }
+
+    private var askCoachButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            showCoach = true
+        } label: {
+            Label("Chat with Coach about this round", systemImage: "bubble.left.and.text.bubble.right")
+                .font(.body).fontWeight(.semibold).foregroundStyle(Color.forestGreen)
+                .frame(maxWidth: .infinity).frame(height: 52)
+                .background(Color.forestGreen.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var successHeader: some View {

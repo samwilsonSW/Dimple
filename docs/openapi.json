@@ -1,0 +1,890 @@
+{
+  "components": {
+    "schemas": {
+      "CoachChatRequest": {
+        "description": "Request model for conversational coach endpoint.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "round_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round Id"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "message"
+        ],
+        "title": "CoachChatRequest",
+        "type": "object"
+      },
+      "CoachChatResponse": {
+        "description": "Response model for conversational coach endpoint.",
+        "properties": {
+          "answer": {
+            "description": "Full natural-language coaching response",
+            "title": "Answer",
+            "type": "string"
+          },
+          "confidence": {
+            "description": "Confidence in the advice: 1=thin data, 5=rich data",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Confidence",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "integer"
+          },
+          "drill_recommendations": {
+            "description": "Ordered list of drills to address identified issues",
+            "items": {
+              "$ref": "#/components/schemas/DrillRecommendation"
+            },
+            "title": "Drill Recommendations",
+            "type": "array"
+          },
+          "key_insights": {
+            "description": "2-4 bullet-point insights extracted from the data",
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Insights",
+            "type": "array"
+          },
+          "message": {
+            "$ref": "#/components/schemas/Message"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "message",
+          "answer",
+          "confidence"
+        ],
+        "title": "CoachChatResponse",
+        "type": "object"
+      },
+      "DrillRecommendation": {
+        "properties": {
+          "drill_name": {
+            "description": "Name of the drill",
+            "title": "Drill Name",
+            "type": "string"
+          },
+          "expected_outcome": {
+            "description": "What success looks like",
+            "title": "Expected Outcome",
+            "type": "string"
+          },
+          "focus_area": {
+            "description": "e.g. '6-iron push', 'lag putting'",
+            "title": "Focus Area",
+            "type": "string"
+          },
+          "instructions": {
+            "description": "Step-by-step drill instructions",
+            "title": "Instructions",
+            "type": "string"
+          },
+          "priority": {
+            "description": "Priority order: 1 = highest",
+            "title": "Priority",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "priority",
+          "focus_area",
+          "drill_name",
+          "instructions",
+          "expected_outcome"
+        ],
+        "title": "DrillRecommendation",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HoleResult": {
+        "description": "Per-hole scorecard entry for simple round logging.",
+        "properties": {
+          "fairway": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fairway"
+          },
+          "gir": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gir"
+          },
+          "hole_number": {
+            "maximum": 18.0,
+            "minimum": 1.0,
+            "title": "Hole Number",
+            "type": "integer"
+          },
+          "par": {
+            "maximum": 5.0,
+            "minimum": 3.0,
+            "title": "Par",
+            "type": "integer"
+          },
+          "putts": {
+            "default": 2,
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Putts",
+            "type": "integer"
+          },
+          "score": {
+            "maximum": 15.0,
+            "minimum": 1.0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "yardage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yardage"
+          }
+        },
+        "required": [
+          "hole_number",
+          "par",
+          "score"
+        ],
+        "title": "HoleResult",
+        "type": "object"
+      },
+      "ManualCourse": {
+        "description": "User-entered course data for rounds not in GolfCourseAPI.com.",
+        "properties": {
+          "holes": {
+            "description": "9 or 18 holes",
+            "maximum": 18.0,
+            "minimum": 9.0,
+            "title": "Holes",
+            "type": "integer"
+          },
+          "par_values": {
+            "description": "Per-hole par values, count must equal holes",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Par Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "holes",
+          "par_values"
+        ],
+        "title": "ManualCourse",
+        "type": "object"
+      },
+      "Message": {
+        "description": "A single message in a conversation.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "role": {
+            "description": "'user' or 'assistant'",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
+      "RoundPayload": {
+        "properties": {
+          "course": {
+            "additionalProperties": true,
+            "title": "Course",
+            "type": "object"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cached course ID from /courses/search",
+            "title": "Course Id"
+          },
+          "handicap_index": {
+            "description": "Player's Handicap Index at time of round (e.g. 15.2, 8.4)",
+            "title": "Handicap Index",
+            "type": "number"
+          },
+          "hole_data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HoleResult"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hole Data"
+          },
+          "manual_course": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualCourse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "User-entered course data. Mutually exclusive with course_id/tee_box."
+          },
+          "reflection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Player's 3-5 sentence reflection on the round. What stood out, what was good/bad, tendencies noticed.",
+            "title": "Reflection"
+          },
+          "round_date": {
+            "title": "Round Date",
+            "type": "string"
+          },
+          "shots": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ShotModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shots"
+          },
+          "tee_box": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeeBox"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total_putts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Putts"
+          },
+          "total_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Score"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "round_date",
+          "course",
+          "handicap_index"
+        ],
+        "title": "RoundPayload",
+        "type": "object"
+      },
+      "ShotModel": {
+        "description": "Structured shot data from user input.\n\nThe user provides 5 things per shot:\n{ before_distance, lie_type, club_used, after_distance, after_lie }\n\nLie codes: T = tee, F = fairway, R = rough, B = bunker, G = green\nClub codes: D, 3W, 5W, H, 3-9, G (gap), L (lob), P (putter)\n\nFor putting (previous lie = G):\n- Input initial putt distance (feet)\n- Input how many putts to hole (as strokes_taken)",
+        "properties": {
+          "after_distance_yards": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Yards/feet to pin after this shot (NULL if not yet known)",
+            "title": "After Distance Yards"
+          },
+          "after_lie": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lie code after shot: T, F, R, B, G, or HOLE",
+            "title": "After Lie"
+          },
+          "before_distance_yards": {
+            "description": "Yards to pin before this shot (feet if on green)",
+            "title": "Before Distance Yards",
+            "type": "integer"
+          },
+          "before_lie": {
+            "description": "Lie code: T=tee, F=fairway, R=rough, B=bunker, G=green",
+            "title": "Before Lie",
+            "type": "string"
+          },
+          "club": {
+            "description": "Club code: D, 3W, 5W, H, 3-9, G=gap, L=lob, P=putter",
+            "title": "Club",
+            "type": "string"
+          },
+          "hole_number": {
+            "title": "Hole Number",
+            "type": "integer"
+          },
+          "narrative": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Auto-generated from structured data. Leave null \u2014 backend generates this.",
+            "title": "Narrative"
+          },
+          "shot_id": {
+            "title": "Shot Id",
+            "type": "string"
+          },
+          "shot_number": {
+            "description": "1 = tee shot, 2 = approach, etc.",
+            "title": "Shot Number",
+            "type": "integer"
+          },
+          "strokes_taken": {
+            "default": 1,
+            "description": "Strokes used (1 for normal, 2+ for penalties, putt count for putting)",
+            "title": "Strokes Taken",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shot_id",
+          "hole_number",
+          "shot_number",
+          "before_distance_yards",
+          "before_lie",
+          "club"
+        ],
+        "title": "ShotModel",
+        "type": "object"
+      },
+      "TeeBox": {
+        "description": "Selected tee box for the round.",
+        "properties": {
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "slope": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slope"
+          },
+          "tee_name": {
+            "title": "Tee Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tee_name"
+        ],
+        "title": "TeeBox",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Golf Intelligence Backend \u2014 Local Embeddings + Moonshot LLM",
+    "title": "Dimple API",
+    "version": "0.7.1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/coach/chat": {
+      "post": {
+        "description": "Conversational AI Coach:\n1. Build data inventory (what data exists for this player)\n2. Fetch conditional data (round stats, trends, shots, reflections)\n3. Build adaptive prompt based on inventory\n4. Call Moonshot LLM to generate coaching response\n5. Save conversation and messages to database",
+        "operationId": "coach_chat_api_v1_coach_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Chat"
+      }
+    },
+    "/api/v1/coach/conversations": {
+      "get": {
+        "description": "List conversations for a user.",
+        "operationId": "get_conversations_api_v1_coach_conversations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Conversations"
+      }
+    },
+    "/api/v1/coach/conversations/{conversation_id}/messages": {
+      "get": {
+        "description": "Get messages for a conversation.",
+        "operationId": "get_conversation_messages_api_v1_coach_conversations__conversation_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Conversation Messages"
+      }
+    },
+    "/api/v1/courses/search": {
+      "get": {
+        "description": "Search for golf courses by name.\nQueries GolfCourseAPI.com and returns matching courses.",
+        "operationId": "search_course_by_name_api_v1_courses_search_get",
+        "parameters": [
+          {
+            "description": "Course name search query",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Course name search query",
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Course By Name",
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/v1/courses/{course_id}": {
+      "get": {
+        "description": "Get full course details including tee boxes and hole data.\nChecks cache first, falls back to API.",
+        "operationId": "get_course_api_v1_courses__course_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Course",
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/v1/rounds": {
+      "get": {
+        "description": "Retrieve round history with stats for a player.",
+        "operationId": "get_rounds_api_v1_rounds_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Rounds"
+      },
+      "post": {
+        "description": "Accept a round payload with structured shot data.\nAuto-generates narratives, calculates SG, embeds, and stores.",
+        "operationId": "ingest_round_api_v1_rounds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoundPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Round"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Check"
+      }
+    }
+  }
+}

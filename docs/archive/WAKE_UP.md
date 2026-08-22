@@ -8,9 +8,10 @@
 
 ## Current Status (Auto-Updated)
 
-**Last Updated:** 2026-07-08
+**Last Updated:** 2026-08-03
 **API Version:** 0.7.0
 **Branch:** Kanary (working branch — main is release, Kanary is where we build)
+**Live API:** `https://dimple-api.chokepointmonitor.com` (named tunnel; stable)
 
 ### What's Working
 - ✅ Course search backend + SwiftUI frontend (`/api/v1/courses/search`, `/api/v1/courses/{id}`)
@@ -22,15 +23,20 @@
 - ✅ Vector search (local embeddings + Supabase pgvector)
 
 ### What's In Progress
-- ✅ Phase A: Backend coach rework — COMPLETE (tested, working)
-- 🔄 Phase B: Frontend chat UI — ready for Claude Code
+- ✅ Phase A: Backend coach rework — COMPLETE
+- ✅ Phase B: Frontend chat UI — COMPLETE (merged to Kanary)
+- ✅ Coach reliability fixes — connection pooling, non-fatal verify, 120s timeout (merged to Kanary)
+- 🧪 Auto-chat-titles — inline generation + background script (`feature/auto-chat-titles`, ready for merge)
+- ✅ Manual course entry — backend complete (migration 019, `POST /rounds` accepts `manual_course`). Frontend ready to build.
+- 🧪 Course selection bug fix — committed on `feature/v1-frontend-fixes`, needs simulator verification
 
 ### What's Blocked / Deferred
-- Conversational coach — Phase A in progress (Kanary), Phase B queued (Claude Code)
+- Coach loading indicator — PARKED post-v1.0.0 (rendering bug, needs backend streaming/async)
 - Submit idempotency — backlog (duplicate prevention on retry)
 - Swipe-to-delete in Round History — needs backend `DELETE /rounds/{id}`
 - Voice memo parsing — CANCELLED per Duk taste
 - Quick round mode — CANCELLED per Duk taste
+- Enhanced scorecard fields (miss direction) — future enhancement
 
 ---
 
@@ -82,7 +88,11 @@
 
 | Date | What Changed |
 |------|-------------|
-| 2026-07-14 | Coach Rework Spec v2 — conversational, data-source-aware architecture. Phase A backend in progress. |
+| 2026-08-03 | Manual course entry spec drafted. Env vars moved to `~/.zshrc`. |
+| 2026-08-03 | Coach reliability fixes merged to Kanary (pooling, non-fatal verify, 120s timeout). |
+| 2026-07-31 | Auto-chat-titles feature built (`feature/auto-chat-titles`). Inline + background generation. |
+| 2026-07-14 | Phase B frontend built (chat UI, conversation list, entry points). Build green; endpoints verified live. Backend messages 502 (`asc=` kwarg) fixed + restarted. In Duk simulator test. |
+| 2026-07-14 | Coach Rework Spec v2 — conversational, data-source-aware architecture. Phase A backend complete. |
 | 2026-07-08 | Docs refreshed. Core loop complete. Ready for production test. |
 | 2026-06-29 | PR #11 — round_id decode fix (String? → Int?). Migration 015 applied. |
 | 2026-06-29 | PR #10 — fix 500 on scorecard submit (shots=None guard). |

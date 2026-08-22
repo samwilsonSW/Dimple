@@ -7,6 +7,10 @@
 [![SwiftUI](https://img.shields.io/badge/SwiftUI-iOS%2017+-blue.svg)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+> **Working on this repo — human or agent?** Start with [`AGENTS.md`](AGENTS.md)
+> for conventions, landmines, and how to verify a change. Current state is in
+> [`docs/STATUS.md`](docs/STATUS.md).
+
 ---
 
 ## What It Does
@@ -117,16 +121,19 @@ GET /api/v1/rounds?user_id=550e8400-e29b-41d4-a716-446655440000&limit=50
 
 ### Ask the Coach
 ```bash
-POST /api/v1/coach/ask
+POST /api/v1/coach/chat
 {
   "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "question": "How is my driving?"
+  "message": "How is my driving?",
+  "conversation_id": 12   // optional — omit to start a new conversation
 }
 ```
 
 **Response:**
 ```json
 {
+  "conversation_id": 12,
+  "message": { "role": "assistant", "content": "...", "created_at": "..." },
   "answer": "Your driving is elite—9/10 based on the data...",
   "confidence": 4,
   "key_insights": [
@@ -141,10 +148,16 @@ POST /api/v1/coach/ask
       "instructions": "Place two alignment sticks 12-15 yards apart...",
       "expected_outcome": "Reinforces mechanical pattern producing accuracy"
     }
-  ],
-  "context": [...]
+  ]
 }
 ```
+
+> Coach responses are slow — measured around 95s. See the risks table in
+> [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) before adding work to this path.
+
+**Full schemas for every endpoint:** [`docs/openapi.json`](docs/openapi.json) —
+generated from the Pydantic models, so it never drifts. The examples above are
+illustrative; that file is authoritative.
 
 ---
 
@@ -172,29 +185,34 @@ If you hit a 150-yard approach to 20 feet (expected 1.8 putts), your SG = 3.1 - 
 
 ```
 Dimple/
-├── Dimple/                 # iOS SwiftUI app
-│   ├── Views/              # CourseSearchView, ScorecardEntryView, RoundHistoryView
-│   ├── Services/           # CourseService, RoundService, RoundHistoryService
-│   ├── Models/             # Swift data models
-│   └── DimpleApp.swift
+├── AGENTS.md               # Conventions for any agent — read first
+├── frontend/
+│   └── dimple-frontend/    # iOS SwiftUI app (CourseService, NewRoundView, ...)
+├── mobile/                 # Expo / React Native app (Expo SDK 54)
+│   └── src/screens/        # LoginScreen, ConversationListScreen, CoachChatScreen
 ├── backend/
 │   ├── app/
-│   │   ├── core/           # Generator, baselines, reflection logic
-│   │   ├── models/         # Pydantic schemas (Shot, Round, CoachResponse)
-│   │   ├── services/       # LLM client, embeddings, Supabase
+│   │   ├── core/           # Generator, baselines, scorecard stats
+│   │   ├── models/         # Pydantic schemas (Shot, Round, CoachChatResponse)
+│   │   ├── routers/        # courses router
+│   │   ├── services/       # LLM client, embeddings, Supabase, titles
 │   │   └── main.py         # FastAPI app
-│   ├── migrations/         # Schema evolution (001-015)
-│   └── scripts/            # CLI tools, batch generation
-├── data/
-│   └── rounds/             # Sample rounds for testing
-├── dimple_tui.py           # Interactive terminal for testing
+│   ├── migrations/         # Schema evolution (001-019) — applied BY HAND
+│   ├── cli/dimple_tui.py   # Interactive terminal for testing
+│   ├── scripts/            # export_openapi.py, smoke_test.py, batch tools
+│   └── tests/              # manual scripts, NOT an automated suite
+├── data/rounds/            # Sample rounds for testing
 ├── docs/
-│   ├── API_CONTRACT.md     # Backend ↔ Frontend interface
-│   ├── TASK_BOARD.md       # What's in progress
-│   ├── AGENT_STATUS.md     # Claude Code heartbeat
-│   └── CHROLLO_ORCHESTRATION_PLAN.md  # How we work
+│   ├── API_CONTRACT.md     # The score — semantics, errors, known risks
+│   ├── openapi.json        # Generated shapes (authoritative)
+│   ├── STATUS.md           # Current state, what's working
+│   ├── TASK_BOARD.md       # Active tasks, backlog, done
+│   └── archive/            # Superseded specs, kept for reference
 └── README.md
 ```
+
+**Two frontends.** `frontend/` is the SwiftUI iOS app; `mobile/` is a newer
+Expo/React Native client added 2026-08-14. Both talk to the same API.
 
 ---
 
@@ -202,28 +220,51 @@ Dimple/
 
 ### Backend
 
+Requires [uv](https://docs.astral.sh/uv/) (`brew install uv`) and Python 3.12+.
+
 ```bash
-# 1. Clone and setup
+# 1. Clone
 git clone https://github.com/samwilsonSW/Dimple.git
 cd Dimple/backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
 
 # 2. Configure environment
 cp .env.example .env
 # Edit .env with your Supabase and Moonshot API keys
 
-# 3. Start server
-python run.py
+# 3. Start server — uv creates and syncs .venv from uv.lock automatically
+uv run python run.py
 
 # 4. Test with TUI
-python dimple_tui.py
+uv run python cli/dimple_tui.py
 ```
+
+There is no activate step, and no `pip install` — `uv run` handles it. Using a
+plain `python` here picks the wrong interpreter and *looks* like it works.
+
+`requirements.txt` is generated from `uv.lock` for pip compatibility; `uv.lock`
+is the source of truth.
+
+### Verify a change
+
+```bash
+cd backend && uv run python scripts/smoke_test.py          # offline: no creds, no server
+cd backend && uv run python scripts/smoke_test.py --live   # against a running server
+```
+
+The offline tier makes no network calls and checks that `docs/openapi.json`
+matches the code, plus the contract's validation rules. Run it before calling
+backend work done. See [`AGENTS.md`](AGENTS.md).
 
 ### iOS App
 
-Open `Dimple/Dimple.xcodeproj` in Xcode. Build and run on device or simulator.
+Open the Xcode project in `frontend/dimple-frontend/`. Build and run on device
+or simulator.
+
+### Expo App
+
+```bash
+cd mobile && npm install && npx expo start
+```
 
 **Note:** The app needs a reachable backend URL. For local development, run the backend on your machine and update the base URL in `CourseService.swift`. For production, deploy the backend (see below).
 
@@ -235,7 +276,9 @@ Open `Dimple/Dimple.xcodeproj` in Xcode. Build and run on device or simulator.
 - [ ] **Round detail view** — Per-hole breakdown with map/visualization
 - [ ] **Trend analysis** — Multi-round improvement tracking, handicap progression
 - [ ] **Coach polish** — LLM-as-Judge evaluation, prompt refinement with real data
-- [ ] **Deploy backend** — Fly.io or similar for production API access
+- [ ] **Coach latency** — streaming/async responses; currently ~95s
+- [x] **Deploy backend** — live at `dimple-api.chokepointmonitor.com` via a named
+      Cloudflare tunnel
 
 ## Product Principles
 
