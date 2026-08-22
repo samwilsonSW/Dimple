@@ -89,6 +89,10 @@ POST /api/v1/rounds
 - `course_id` XOR `manual_course` — never both
 - `manual_course` → no `shots`, no `tee_box`
 - `hole_data` OR `shots` (or both)
+- `manual_course.par_values` is the whole course; `strokes_over_under` and
+  `avg_score_to_par` count only the holes present in `hole_data`, matched by
+  `hole_number`. A front-nine round on an 18-hole manual course is scored
+  against those nine pars.
 
 **Response:**
 ```json
@@ -267,6 +271,7 @@ seam — this table is the reason it exists.
 | 2026-06-29 | 0.6.0 | `round_id` is Int (BIGSERIAL) not String; `round_stats` is an array in history; added `avg_putts_per_hole`, `avg_score_to_par` |
 | 2026-07-14 | 0.7.0 | Replaced `/coach/ask` with `/coach/chat`. Added `/coach/conversations` and `/{id}/messages`. Removed the 25+ handicap gate. Data-source-aware prompts. |
 | 2026-08-06 | 0.7.1 | Added `manual_course` to `POST /rounds` (migration 019). Mutually exclusive with `course_id`; rejects `shots`. |
+| 2026-08-21 | 0.7.1 | Fix: `manual_course` stats summed all par values regardless of holes played, so partial rounds reported a wrong `strokes_over_under`. Now matched by `hole_number`. |
 
 `0.7.2` is proposed on `feature/coach-context-memory` (conversation summary,
 migration 020) and is **not** merged — see PR #16.

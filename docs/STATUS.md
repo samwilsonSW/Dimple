@@ -18,10 +18,10 @@
 - Scorecard entry (per-hole, auto-save)
 - Round history with stats
 - AI Coach chat (conversational, data-aware)
-- Manual course entry (backend complete, frontend ready)
 
 ### In Progress
-- Course selection bug fix (committed, needs simulator verification)
+- Manual course entry (verified on device 22 Aug — full round entered end to end)
+- Course selection bug fix (bug #3 root cause fixed in PR #19, needs device re-test)
 - Auto-chat-titles (built, ready to merge)
 
 ### Blocked / Deferred
@@ -34,7 +34,7 @@
 ## v1.0.0 Checklist
 
 - [ ] Verify course selection bug fix
-- [ ] Build manual course entry frontend
+- [x] Build manual course entry frontend
 - [ ] Test on device
 - [ ] Merge `Kanary` → `main`, tag v1.0.0
 

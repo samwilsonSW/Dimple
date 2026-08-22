@@ -86,6 +86,9 @@ def calculate_round_stats(
         handicap: Player's Handicap Index
         course_rating: Optional course rating for differential calc
         course_slope: Optional course slope for differential calc
+        manual_par_values: Optional per-hole par for a manually entered course.
+            Indexed by hole number, so partial rounds score against the holes
+            played rather than the whole course.
     
     Returns:
         Dict with all calculated stats
@@ -108,7 +111,15 @@ def calculate_round_stats(
     # Strokes over/under (vs expected score)
     # Use manual par values if provided (manual course entry), otherwise from hole_data
     if manual_par_values:
-        total_par = sum(manual_par_values)
+        # Index by hole number, not sum the whole list: a front-nine or
+        # "play until dark" round on an 18-hole manual course must not be
+        # scored against all 18 pars. Falls back to the hole's own par if the
+        # hole number is outside the manual course's range.
+        total_par = sum(
+            manual_par_values[h.hole_number - 1]
+            if 1 <= h.hole_number <= len(manual_par_values) else h.par
+            for h in hole_data
+        )
     else:
         total_par = sum(h.par for h in hole_data)
     # Expected score = par + handicap (rough approximation)

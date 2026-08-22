@@ -49,6 +49,27 @@ enum RoundMode: String, Codable, CaseIterable, Identifiable {
 
     /// Flexible mode lets the player submit at any point (e.g. sun went down).
     var allowsEarlySubmit: Bool { self == .flexible }
+
+    /// Modes worth offering for a given hole template. A 9-hole course has no
+    /// back nine, and offering one produces an empty scorecard.
+    static func available(for template: [HoleInfo]) -> [RoundMode] {
+        hasBackNine(template) ? RoundMode.allCases : [.full18, .flexible]
+    }
+
+    /// "Full 18 Holes" is wrong on a 9-hole course — there it just means "all of them".
+    func title(for template: [HoleInfo]) -> String {
+        self == .full18 && !Self.hasBackNine(template) ? "All \(template.count) Holes" : title
+    }
+
+    func subtitle(for template: [HoleInfo]) -> String {
+        self == .full18 && !Self.hasBackNine(template)
+            ? "Holes 1–\(template.count)"
+            : subtitle
+    }
+
+    private static func hasBackNine(_ template: [HoleInfo]) -> Bool {
+        template.contains { $0.holeNumber >= 10 }
+    }
 }
 
 // MARK: - Scorecard Start (tee picker + setup → scorecard hand-off)
@@ -93,11 +114,12 @@ struct HoleEntry: Codable, Hashable {
 // MARK: - Draft (local persistence, survives crash / app kill)
 
 struct DraftRound: Codable {
-    let courseId: String
+    let courseId: String?          // nil for a manually entered course
     let courseName: String
     let city: String?
     let state: String?
-    let teeBox: TeeBox
+    let teeBox: TeeBox?            // nil for a manually entered course
+    let manualCourse: ManualCourse?
     let holeTemplate: [HoleInfo]   // par/yardage for every hole — lets resume work offline
     let handicapIndex: Double
     let roundDate: String          // YYYY-MM-DD
@@ -120,9 +142,17 @@ struct RoundPayload: Encodable {
     let handicap_index: Double
     let course_id: String?
     let tee_box: TeeBoxPayload?
+    let manual_course: ManualCoursePayload?
     let hole_data: [HolePayload]
     let total_score: Int
     let total_putts: Int
+}
+
+/// Only `holes` and `par_values` — name/city/state ride in `course`, matching
+/// the backend's ManualCourse model. Mutually exclusive with `course_id`.
+struct ManualCoursePayload: Encodable {
+    let holes: Int
+    let par_values: [Int]
 }
 
 struct CoursePayload: Encodable {

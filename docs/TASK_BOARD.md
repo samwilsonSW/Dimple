@@ -6,23 +6,23 @@
 
 ## Active
 
-### 1. Manual Course Entry — Frontend
-**Status:** Backend complete, ready to build  
-**What:** SwiftUI form for entering course manually (name, city, state, holes, par per hole)  
-**Where:** `ManualCourseEntryView.swift`, wire to `POST /api/v1/rounds` with `manual_course` field
-
-### 2. Course Selection Bug Fix
-**Status:** Fix committed, needs verification  
-**What:** After selecting tees, user gets kicked back to search. Should go to hole 1.  
-**Where:** `NewRoundView.swift`, `CourseTeePickerView.swift`  
-**Next:** Simulator test, confirm no path reset
+### 1. Course Selection Bug Fix (bug #3)
+**Status:** Root cause fixed in PR #19, needs a device re-test  
+**What:** Start Round had to be tapped twice. `a256d84` treated the symptom —
+it swapped a path reset for a spinner, so instead of being kicked back to
+search you got a spinner that never resolved. Same race underneath: the
+scorecard VM was written to `@State` and the route pushed in one closure, so
+the destination built before the write landed and SwiftUI never rebuilt it.  
+**Where:** `NewRoundView.swift` — VM now lives in a `RoundFlow` reference box  
+**Next:** Device test — Start Round should go straight to hole 1 on the first tap,
+on both the API-course and manual-course paths
 
 ---
 
 ## v1.0.0 Checklist
 
 - [ ] Verify course selection bug fix
-- [ ] Build manual course entry frontend
+- [x] Build manual course entry frontend
 - [ ] Test on device
 - [ ] Merge `Kanary` → `main`, tag `v1.0.0`
 
@@ -30,6 +30,7 @@
 
 ## Done (Recent)
 
+- [x] Manual course entry frontend (builds clean; simulator/device pass still owed)
 - [x] Manual course entry backend
 - [x] Coach reliability fixes
 - [x] Auto-chat-titles

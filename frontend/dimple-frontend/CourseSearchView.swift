@@ -136,12 +136,16 @@ struct CourseSearchView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.courses.isEmpty {
             if vm.hasSearched {
-                stateMessage(
-                    icon: "magnifyingglass",
-                    tint: Color(.tertiaryLabel),
-                    title: "No courses found",
-                    subtitle: "Try a different name or spelling."
-                )
+                VStack(spacing: 16) {
+                    stateMessage(
+                        icon: "magnifyingglass",
+                        tint: Color(.tertiaryLabel),
+                        title: "No courses found",
+                        subtitle: "Try a different name or spelling."
+                    )
+                    manualEntryLink(prominent: true)
+                        .padding(.bottom, 40)
+                }
             } else {
                 stateMessage(
                     icon: "flag.fill",
@@ -168,6 +172,8 @@ struct CourseSearchView: View {
                         searchFocused = false
                     })
                 }
+                manualEntryLink(prominent: false)
+                    .padding(.top, 6)
             }
             .padding(.horizontal)
             .padding(.bottom, 20)
@@ -210,6 +216,29 @@ struct CourseSearchView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// Search misses small courses and secondary layouts ("Creek Course" at
+    /// Meadowbrook) — and for those it returns *wrong* matches as often as no
+    /// matches, so this stays reachable from the results list too.
+    private func manualEntryLink(prominent: Bool) -> some View {
+        NavigationLink(value: ManualCourseRoute.form) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.pencil")
+                Text(prominent ? "Enter course manually" : "Can't find it? Enter it manually")
+            }
+            .font(.subheadline).fontWeight(.semibold)
+            .foregroundStyle(prominent ? .white : Color.forestGreen)
+            .padding(.horizontal, 18)
+            .frame(height: 48)
+            .background(prominent ? Color.forestGreen : Color.forestGreen.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture().onEnded {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            searchFocused = false
+        })
     }
 
     private func stateMessage(icon: String, tint: Color, title: String, subtitle: String) -> some View {
