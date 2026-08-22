@@ -21,7 +21,7 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="0.7.1",
+    version="1.0.0",
 )
 
 app.include_router(courses.router)

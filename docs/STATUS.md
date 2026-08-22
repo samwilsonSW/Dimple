@@ -9,7 +9,7 @@
 
 ## Right Now
 
-**Version:** 0.7.1  
+**Version:** 1.0.0  
 **Branch:** `Kanary` (working) → `main` (release)  
 **API:** `https://dimple-api.chokepointmonitor.com`
 
@@ -36,7 +36,7 @@
 - [x] Verify course selection bug fix (bug #3 fixed in #19, verified in simulator)
 - [x] Build manual course entry frontend
 - [x] Test on device
-- [ ] Merge `Kanary` → `main`, tag v1.0.0
+- [x] Merge `Kanary` → `main`, tag v1.0.0
 
 ---
 
@@ -48,7 +48,7 @@ Everything else is negotiable.
 
 ---
 
-*Last updated: 2026-08-20*
+*Last updated: 2026-08-22*
 
 ## This Week
 

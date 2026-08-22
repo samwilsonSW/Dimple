@@ -6,7 +6,7 @@
 
 ## Version
 
-`0.7.1` — matches `backend/app/main.py`
+`1.0.0` — matches `backend/app/main.py`
 
 ---
 
