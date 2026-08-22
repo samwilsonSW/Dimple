@@ -1,303 +1,212 @@
-# Dimple — AI Golf Coach
+# Dimple
 
-> **Your personal golf intelligence system.** Track rounds, analyze performance with strokes gained analytics, and get coached by an AI that knows your game.
+**A golf tracker with a coach attached.** Log a round hole by hole, and an LLM
+grounded in your own shot history tells you where the strokes went.
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
-[![SwiftUI](https://img.shields.io/badge/SwiftUI-iOS%2017+-blue.svg)](https://developer.apple.com/xcode/swiftui/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)
+![SwiftUI](https://img.shields.io/badge/SwiftUI-iOS%2026.5+-orange.svg)
+![Expo](https://img.shields.io/badge/Expo-SDK%2054-000020.svg)
 
-> **Working on this repo — human or agent?** Start with [`AGENTS.md`](AGENTS.md)
-> for conventions, landmines, and how to verify a change. Current state is in
-> [`docs/STATUS.md`](docs/STATUS.md).
+Most golf apps record what you shot. Dimple tries to explain it — by measuring
+every round against baselines for *your* handicap, not a tour pro's, and by
+giving the coach real retrieved shots to reason over instead of vibes.
 
 ---
 
-## What It Does
+## What it does
 
-Dimple is a mobile-first golf tracking and coaching app:
+**Search a course** — Course lookup and tee selection via GolfCourseAPI.com,
+which auto-fills per-hole par and yardage. Courses the API doesn't have can be
+entered by hand.
 
-1. **Find Courses** — Search 15,000+ courses, select tees, auto-load yardage/par
-2. **Track Rounds** — Enter scores per hole (score, putts, fairway, GIR) with a sun-readable, one-handed interface
-3. **View History** — See all rounds with strokes gained chips, trends, and stats
-4. **Get Coached** — Ask the AI coach anything about your game. It retrieves your actual shots and gives personalized advice with drill recommendations
+**Track a round** — Per-hole entry: score, putts, fairway, green in regulation.
+One-handed, high-contrast, autosaving, and it survives the app being killed
+mid-round.
 
-### Example Interaction
+**See the history** — Every round with strokes-gained figures, putting and
+approach splits, GIR and fairway percentages.
 
-```
-Player: "What should I work on?"
-
-Coach: "You're hemorrhaging strokes with your hybrid from 175-185 yards.
-Over 5 attempts, you've hit only one green (20% GIR) and found the rough 
-on 60% of shots. The dispersion pattern suggests lateral dispersion is too 
-wide for this club."
-
-Drill: "The 6-Foot Gate Drill" — Place two alignment sticks 6 feet apart,
-10 feet in front of your ball. Hit 20 hybrid shots through the gate.
-Aim for 80% gate success before moving to targets.
-```
+**Ask the coach** — A conversational coach that retrieves your five most
+similar past shots by vector search, aggregates your strokes-gained trends, and
+returns structured advice with ranked drill recommendations.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   iOS App       │───▶│  FastAPI     │────▶│  Supabase       │
-│   (SwiftUI)     │     │  Backend     │     │  (Postgres +    │
-│                 │◀────│              │◀────│   pgvector)     │
-└─────────────────┘     └──────────────┘     └─────────────────┘
-        │                      │
-        │            ┌──────────────┐
-        │            │  Local       │
-        │            │  Embeddings  │
-        │            │  (384-dim)   │
-        │            └──────────────┘
-        │                      │
-        ▼                      ▼
-┌─────────────────────────────────────────┐
-│  Moonshot LLM (kimi-k2.5)               │
-│  • RAG retrieval (top-5 similar shots)  │
-│  • SG category aggregation              │
-│  • Trend-based coaching                 │
-│  • Structured JSON output               │
-│  • Drill recommendations                │
-└─────────────────────────────────────────┘
+  SwiftUI app  ─┐
+                ├─▶  FastAPI  ─▶  Supabase (Postgres + pgvector)
+  Expo app     ─┘       │
+                        ├─▶  sentence-transformers  (local, 384-dim)
+                        └─▶  Moonshot kimi-k2.5     (coaching)
 ```
 
-### Key Design Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **Scorecard-first UX** | Low friction entry (score/putts/fairway/GIR) — rich shot-by-shot is the upgrade, not the gate |
-| **Local embeddings** (all-MiniLM-L6-v2) | Zero API cost, 384-dim, fast enough for real-time |
-| **Handicap-adjusted baselines** | A 15hcp's "good" drive is different from a 5hcp's — baselines scale 0-25 |
-| **Vector search + LLM** | Retrieve similar shots for context, let LLM synthesize insights |
-| **Synthetic round generator** | Generate realistic test data from Break X Golf statistics |
+Shot narratives are embedded **locally** with `all-MiniLM-L6-v2` — no per-shot
+API cost, and the vectors live in Postgres via pgvector. When you ask the coach
+something, the backend embeds the question, pulls the five nearest shots via a
+`match_shots` Postgres function, folds in aggregate strokes-gained stats, and
+hands the LLM a grounded prompt. The response comes back as structured JSON,
+not prose to be parsed. The prompt adapts to what data actually exists, so a
+new user gets a coach that admits it hasn't seen them play yet.
 
 ---
 
-## Tech Stack
+## Strokes gained, handicap-adjusted
 
-- **Frontend**: SwiftUI, iOS 17+
-- **Backend**: FastAPI, Pydantic, SQLAlchemy
-- **Database**: Supabase (Postgres + pgvector)
-- **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
-- **LLM**: Moonshot AI (kimi-k2.5) via OpenAI-compatible API
-- **Analytics**: Custom strokes-gained engine with handicap interpolation
-- **Testing**: Synthetic round generation from statistical distributions
+This is the part that isn't a wrapper around an API.
+
+A 15-handicap hitting a 150-yard approach to 20 feet did something *good*. The
+same shot from a scratch player is unremarkable. Dimple keeps separate baseline
+tables for handicaps 0, 5, 10, 15, 20, and 25, and linearly interpolates between
+brackets for anything in between — so you're always measured against your peers.
+
+Baselines are derived from Broadie's *Every Shot Counts* amateur data for
+scratch, calibrated against Break X Golf's aggregate statistics (3,788 rounds
+across 1,116 golfers) for the rest.
+
+```
+SG = Baseline(before) − strokes_taken − Baseline(after)
+```
+
+A worked example, 15 handicap:
+
+| | |
+|---|---|
+| 150 yards, fairway | baseline **2.85** strokes to hole out |
+| you hit it to 20 feet | that's 1 stroke |
+| 20 feet, green | baseline **1.68** strokes to hole out |
+| **SG** | 2.85 − 1 − 1.68 = **+0.17** |
+
+Slightly better than a 15-handicap would typically do. Every shot gets this
+treatment, then aggregates into putting, approach, driving, and short-game
+splits.
+
+The engine is ~750 lines of pure Python in `backend/app/core/` with no
+third-party imports — it's the part of the product that has to be right.
 
 ---
 
-## API Endpoints
+## Tech stack
 
-### Search Courses
-```bash
-GET /api/v1/courses/search?q=Rawls&limit=10
-```
+| Layer | Choice |
+|---|---|
+| iOS client | SwiftUI, iOS 26.5+ |
+| Second client | Expo / React Native (SDK 54) |
+| API | FastAPI + Pydantic v2 |
+| Database | Supabase — Postgres + pgvector |
+| Embeddings | sentence-transformers `all-MiniLM-L6-v2`, 384-dim, run locally |
+| LLM | Moonshot `kimi-k2.5` via an OpenAI-compatible client |
+| Auth | Supabase Auth |
+| Hosting | Cloudflare named tunnel |
+| Dependencies | uv, fully locked |
 
-### Ingest a Round (Scorecard Mode)
-```bash
-POST /api/v1/rounds
-{
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "round_date": "2026-07-08",
-  "course": {"name": "Rawls Course", "city": "Lubbock", "state": "TX"},
-  "handicap_index": 15.2,
-  "course_id": "21027",
-  "tee_box": {"tee_name": "Blue", "rating": 74.9, "slope": 134},
-  "hole_data": [
-    {"hole_number": 1, "par": 4, "yardage": 402, "score": 5, "putts": 2, "fairway": true, "gir": false}
-  ],
-  "total_score": 85,
-  "total_putts": 32
-}
-```
-
-### Get Round History
-```bash
-GET /api/v1/rounds?user_id=550e8400-e29b-41d4-a716-446655440000&limit=50
-```
-
-### Ask the Coach
-```bash
-POST /api/v1/coach/chat
-{
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "How is my driving?",
-  "conversation_id": 12   // optional — omit to start a new conversation
-}
-```
-
-**Response:**
-```json
-{
-  "conversation_id": 12,
-  "message": { "role": "assistant", "content": "...", "created_at": "..." },
-  "answer": "Your driving is elite—9/10 based on the data...",
-  "confidence": 4,
-  "key_insights": [
-    "Tour-level SG: +0.48 per drive ranks in the 95th+ percentile",
-    "Perfect accuracy: 5/5 fairways eliminates penalty strokes"
-  ],
-  "drill_recommendations": [
-    {
-      "priority": 1,
-      "focus_area": "driver accuracy maintenance",
-      "drill_name": "Fairway Gate Pressure Test",
-      "instructions": "Place two alignment sticks 12-15 yards apart...",
-      "expected_outcome": "Reinforces mechanical pattern producing accuracy"
-    }
-  ]
-}
-```
-
-> Coach responses are slow — measured around 95s. See the risks table in
-> [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) before adding work to this path.
-
-**Full schemas for every endpoint:** [`docs/openapi.json`](docs/openapi.json) —
-generated from the Pydantic models, so it never drifts. The examples above are
-illustrative; that file is authoritative.
+**Why two clients.** `frontend/` is the SwiftUI app — the whole tracker, ~4,800
+lines: auth, course search, scorecard entry, round history, handicap. `mobile/`
+is a smaller Expo client, ~900 lines, covering login and the coach chat only.
+It exists because the coach is the part that needs constant iteration, and
+pushing a JavaScript bundle to a phone takes seconds where an Xcode build and
+install takes minutes. Both talk to the same API.
 
 ---
 
-## Strokes Gained Methodology
+## API
 
-Dimple implements a **handicap-adjusted strokes gained** system:
+```
+GET   /health
+GET   /api/v1/courses/search?q=...
+GET   /api/v1/courses/{course_id}
+POST  /api/v1/rounds
+GET   /api/v1/rounds?user_id=...
+POST  /api/v1/coach/chat
+GET   /api/v1/coach/conversations
+GET   /api/v1/coach/conversations/{id}/messages
+```
 
-- **Baseline tables** for handicaps 0, 5, 10, 15, 20, 25 (interpolated for any value)
-- **Per-shot SG**: Compares your result to expected strokes from that lie/distance
-- **Category aggregation**: Driving, approach, short game, putting summaries
-- **Statistical generator**: Synthetic rounds follow Break X Golf distributions
+A coach reply carries `answer`, a `confidence` score, `key_insights`, and
+`drill_recommendations` — each with a priority, focus area, instructions, and
+an expected outcome.
 
-Example baseline (15hcp approach from fairway):
-| Distance | Expected Strokes |
-|----------|-----------------|
-| 100 yards | 2.8 |
-| 150 yards | 3.1 |
-| 200 yards | 3.5 |
-
-If you hit a 150-yard approach to 20 feet (expected 1.8 putts), your SG = 3.1 - (1 + 1.8) = +0.3 strokes gained.
+Request and response schemas are **generated from the Pydantic models** into
+[`docs/openapi.json`](docs/openapi.json) rather than written by hand, and CI
+fails if the committed schema drifts from the code.
 
 ---
 
-## Project Structure
+## Running it
 
-```
-Dimple/
-├── AGENTS.md               # Conventions for any agent — read first
-├── frontend/
-│   └── dimple-frontend/    # iOS SwiftUI app (CourseService, NewRoundView, ...)
-├── mobile/                 # Expo / React Native app (Expo SDK 54)
-│   └── src/screens/        # LoginScreen, ConversationListScreen, CoachChatScreen
-├── backend/
-│   ├── app/
-│   │   ├── core/           # Generator, baselines, scorecard stats
-│   │   ├── models/         # Pydantic schemas (Shot, Round, CoachChatResponse)
-│   │   ├── routers/        # courses router
-│   │   ├── services/       # LLM client, embeddings, Supabase, titles
-│   │   └── main.py         # FastAPI app
-│   ├── migrations/         # Schema evolution (001-019) — applied BY HAND
-│   ├── cli/dimple_tui.py   # Interactive terminal for testing
-│   ├── scripts/            # export_openapi.py, smoke_test.py, batch tools
-│   └── tests/              # manual scripts, NOT an automated suite
-├── data/rounds/            # Sample rounds for testing
-├── docs/
-│   ├── API_CONTRACT.md     # The score — semantics, errors, known risks
-│   ├── openapi.json        # Generated shapes (authoritative)
-│   ├── STATUS.md           # Current state, what's working
-│   ├── TASK_BOARD.md       # Active tasks, backlog, done
-│   └── archive/            # Superseded specs, kept for reference
-└── README.md
-```
-
-**Two frontends.** `frontend/` is the SwiftUI iOS app; `mobile/` is a newer
-Expo/React Native client added 2026-08-14. Both talk to the same API.
-
----
-
-## Running Locally
-
-### Backend
-
-Requires [uv](https://docs.astral.sh/uv/) (`brew install uv`) and Python 3.12+.
+Backend — requires [uv](https://docs.astral.sh/uv/) and Python 3.12+:
 
 ```bash
-# 1. Clone
-git clone https://github.com/samwilsonSW/Dimple.git
-cd Dimple/backend
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your Supabase and Moonshot API keys
-
-# 3. Start server — uv creates and syncs .venv from uv.lock automatically
-uv run python run.py
-
-# 4. Test with TUI
-uv run python cli/dimple_tui.py
+cd backend
+cp .env.example .env          # Supabase + Moonshot + GolfCourseAPI keys
+uv run python run.py          # uv syncs .venv from uv.lock automatically
 ```
 
-There is no activate step, and no `pip install` — `uv run` handles it. Using a
-plain `python` here picks the wrong interpreter and *looks* like it works.
+There's no virtualenv to activate and no `pip install` step.
 
-`requirements.txt` is generated from `uv.lock` for pip compatibility; `uv.lock`
-is the source of truth.
+iOS — open `frontend/dimple-frontend.xcodeproj`, copy
+`frontend/Secrets.xcconfig.example` to `Secrets.xcconfig` and add your Supabase
+publishable key, then build.
 
-### Verify a change
+Expo — `cd mobile && npm install && npx expo start`.
+
+### Verifying a change
 
 ```bash
-cd backend && uv run python scripts/smoke_test.py          # offline: no creds, no server
-cd backend && uv run python scripts/smoke_test.py --live   # against a running server
+cd backend && uv run python scripts/smoke_test.py           # offline
+cd backend && uv run python scripts/smoke_test.py --live    # against a server
 ```
 
-The offline tier makes no network calls and checks that `docs/openapi.json`
-matches the code, plus the contract's validation rules. Run it before calling
-backend work done. See [`AGENTS.md`](AGENTS.md).
+The offline tier needs no credentials, no network, and no running server. It
+checks that the committed OpenAPI schema matches the code and that the contract's
+validation rules still hold. It runs on every push and pull request.
 
-### iOS App
+---
 
-Open the Xcode project in `frontend/dimple-frontend/`. Build and run on device
-or simulator.
+## Project layout
 
-### Expo App
-
-```bash
-cd mobile && npm install && npx expo start
+```
+backend/
+  app/core/        strokes-gained baselines, round stats, synthetic generator
+  app/models/      Pydantic schemas — the API contract in code
+  app/services/    embeddings, LLM, Supabase, course API
+  app/routers/     course search
+  migrations/      SQL, applied by hand
+  scripts/         schema export, tiered smoke test
+frontend/          SwiftUI iOS app
+mobile/            Expo / React Native coach client
+docs/
+  API_CONTRACT.md  endpoint semantics, error meanings, known risks
+  openapi.json     generated schemas — authoritative
+  STATUS.md        what works right now
+AGENTS.md          repo conventions and landmines
 ```
 
-**Note:** The app needs a reachable backend URL. For local development, run the backend on your machine and update the base URL in `CourseService.swift`. For production, deploy the backend (see below).
+---
+
+## Status and known limits
+
+Working end to end: auth, course search and tee selection, manual course entry,
+scorecard entry with crash-safe drafts, round history with stats, and the
+conversational coach. Deployed and reachable.
+
+Honest about what it isn't:
+
+- **Coach replies take ~95 seconds.** The model runs in a reasoning mode and the
+  response isn't streamed. This is the biggest open product problem.
+- **No automated test suite.** A tiered smoke test is the regression gate;
+  `backend/tests/` holds manual scripts that hit a live server, not a suite.
+- **Migrations are applied by hand** against Supabase. There's no migration
+  runner.
+- **Shot-by-shot entry** — per-shot distance, lie, and club — is modelled and
+  supported by the backend, but no client builds it yet. Scorecard mode is the
+  path everything actually uses.
+- **Round detail view** is a placeholder in the iOS app.
+- **Manually entered courses carry no yardage**, so shot-level strokes gained
+  isn't available for them. Scorecard stats and coaching are.
 
 ---
 
-## What's Next
-
-- [ ] **Shot-by-shot entry** — Full per-shot tracking (distance, lie, club, result) for power users
-- [ ] **Round detail view** — Per-hole breakdown with map/visualization
-- [ ] **Trend analysis** — Multi-round improvement tracking, handicap progression
-- [ ] **Coach polish** — LLM-as-Judge evaluation, prompt refinement with real data
-- [ ] **Coach latency** — streaming/async responses; currently ~95s
-- [x] **Deploy backend** — live at `dimple-api.chokepointmonitor.com` via a named
-      Cloudflare tunnel
-
-## Product Principles
-
-> **The real win:** Make scorecard mode so good that people *want* to upgrade to shot-by-shot because they see the value, not because we force them.
->
-> Low friction first. Rich data as a reward, not a requirement.
-
----
-
-## Why This Project
-
-Most golf apps track scores. Dimple aims to help you improve your scores.
-
-The technical challenge isn't just building a chatbot. It's:
-- Designing a data model that captures enough context per shot
-- Creating baselines that scale with player ability
-- Using RAG to ground LLM advice in actual performance data
-- Generating synthetic but statistically realistic test data
-
----
-
-Built by [Sam Wilson](https://github.com/samwilsonSW) with help from [Kanary](https://github.com/openclaw) 🐤
+Built by [Sam Wilson](https://github.com/samwilsonSW).
