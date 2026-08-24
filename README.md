@@ -183,30 +183,6 @@ docs/
   STATUS.md        what works right now
 AGENTS.md          repo conventions and landmines
 ```
-
----
-
-## Status and known limits
-
-Working end to end: auth, course search and tee selection, manual course entry,
-scorecard entry with crash-safe drafts, round history with stats, and the
-conversational coach. Deployed and reachable.
-
-Honest about what it isn't:
-
-- **Coach replies take ~95 seconds.** The model runs in a reasoning mode and the
-  response isn't streamed. This is the biggest open product problem.
-- **No automated test suite.** A tiered smoke test is the regression gate;
-  `backend/tests/` holds manual scripts that hit a live server, not a suite.
-- **Migrations are applied by hand** against Supabase. There's no migration
-  runner.
-- **Shot-by-shot entry** — per-shot distance, lie, and club — is modelled and
-  supported by the backend, but no client builds it yet. Scorecard mode is the
-  path everything actually uses.
-- **Round detail view** is a placeholder in the iOS app.
-- **Manually entered courses carry no yardage**, so shot-level strokes gained
-  isn't available for them. Scorecard stats and coaching are.
-
 ---
 
 Built by [Sam Wilson](https://github.com/samwilsonSW).
