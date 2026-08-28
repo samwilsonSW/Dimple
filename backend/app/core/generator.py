@@ -14,6 +14,7 @@ import uuid
 from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
 
+from app.core.empirical import HandicapAggregates, OBSERVED
 from app.models.round import ShotModel
 
 
@@ -21,32 +22,23 @@ from app.models.round import ShotModel
 # STATISTICAL DISTRIBUTIONS (from Break X Golf data)
 # ──────────────────────────────────────────────────────────────────────────────
 
-@dataclass
-class HandicapStats:
-    """Aggregate stats for a handicap bracket."""
-    avg_score: float
-    avg_drive_yards: float
-    drive_std: float
-    fairway_pct: float
-    gir_pct: float
-    up_down_pct: float
-    avg_putts: float
-    putts_std: float
-
-
+# The measured aggregates now live in `app.core.empirical`, which holds counted
+# data and nothing that simulates. They are re-exported here so existing callers
+# keep working; do not re-add a local copy, or the two will drift.
+#
 # NOTE: Post-hoc score variance was removed. Natural variance comes from
 # the Monte Carlo sampling of per-shot outcomes (GIR, fairway, up-down, etc.).
 # Adding artificial stroke shifts after hole-by-hole simulation produces
 # physically impossible scores (e.g., 25hcp shooting 73 by subtracting strokes).
+#
+# WARNING: the sampler below does not reproduce these aggregates. `_gir` and
+# `_up_down` scale already handicap-specific rates by a further handicap factor,
+# `_approach_dist` has no handicap term at all, and `_putts` rounds a per-hole
+# mean to a near-constant 2. It is not a validation oracle — see
+# `docs/SG_REBUILD.md`, phase 4.
 
-HANDICAP_STATS = {
-    0: HandicapStats(avg_score=74.6, avg_drive_yards=274, drive_std=18, fairway_pct=0.565, gir_pct=0.568, up_down_pct=0.500, avg_putts=31.3, putts_std=2.5),
-    5: HandicapStats(avg_score=79.0, avg_drive_yards=258, drive_std=20, fairway_pct=0.510, gir_pct=0.461, up_down_pct=0.377, avg_putts=32.5, putts_std=2.8),
-    10: HandicapStats(avg_score=84.6, avg_drive_yards=247, drive_std=22, fairway_pct=0.493, gir_pct=0.373, up_down_pct=0.316, avg_putts=33.9, putts_std=3.0),
-    15: HandicapStats(avg_score=89.3, avg_drive_yards=226, drive_std=24, fairway_pct=0.481, gir_pct=0.264, up_down_pct=0.251, avg_putts=34.8, putts_std=3.2),
-    20: HandicapStats(avg_score=93.7, avg_drive_yards=219, drive_std=25, fairway_pct=0.428, gir_pct=0.224, up_down_pct=0.217, avg_putts=36.1, putts_std=3.5),
-    25: HandicapStats(avg_score=98.6, avg_drive_yards=217, drive_std=26, fairway_pct=0.430, gir_pct=0.187, up_down_pct=0.203, avg_putts=37.0, putts_std=3.8),
-}
+HandicapStats = HandicapAggregates
+HANDICAP_STATS = OBSERVED
 
 
 def _get_stats(handicap: float) -> HandicapStats:

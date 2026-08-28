@@ -109,6 +109,9 @@ struct HoleEntry: Codable, Hashable {
     var putts: Int?
     var fairway: Bool?   // nil = not recorded; always nil on par 3
     var gir: Bool?       // nil = not recorded
+    // Optional so drafts saved before these existed still decode.
+    var firstPutt: FirstPutt?
+    var penaltyStrokes: Int?
 }
 
 // MARK: - Draft (local persistence, survives crash / app kill)
@@ -175,6 +178,8 @@ struct HolePayload: Encodable {
     let putts: Int?
     let fairway: Bool?
     let gir: Bool?
+    let first_putt: String?     // "tap_in" | "short" | "mid" | "long"; nil if not recorded
+    let penalty_strokes: Int
 }
 
 // MARK: - Submit Response

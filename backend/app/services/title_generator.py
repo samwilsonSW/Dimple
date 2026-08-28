@@ -1,5 +1,6 @@
 """Title generation for coach conversations."""
 import logging
+import os
 import openai
 from app.core.config import get_settings
 
@@ -7,11 +8,17 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Dedicated client for title generation (cheap model, fast)
+# Uses OpenCode Go (OpenAI-compatible) — same provider as main LLM client
+_title_env_key = os.environ.get("OPENCODE_API_KEY", "")
+_title_api_key = _title_env_key if _title_env_key else (settings.opencode_api_key or settings.moonshot_api_key)
 title_client = openai.OpenAI(
-    api_key=settings.moonshot_api_key,
-    base_url="https://api.moonshot.ai/v1",
+    api_key=_title_api_key,
+    base_url=os.environ.get("OPENCODE_BASE_URL", "https://opencode.ai/zen/go/v1"),
     timeout=30.0,
 )
+
+# Use a fast/cheap model for title generation
+TITLE_MODEL = os.environ.get("OPENCODE_TITLE_MODEL", "glm-5.2")
 
 TITLE_SYSTEM_PROMPT = """You are a title generator for golf coaching conversations.
 Given a user's first message to an AI golf coach, create a very short, descriptive title.
@@ -32,7 +39,7 @@ def generate_title(first_message: str) -> str | None:
     """
     try:
         response = title_client.chat.completions.create(
-            model="moonshot-v1-8k",
+            model=TITLE_MODEL,
             messages=[
                 {"role": "system", "content": TITLE_SYSTEM_PROMPT},
                 {"role": "user", "content": first_message},
