@@ -6,7 +6,7 @@
 
 ## Version
 
-`1.0.0` — matches `backend/app/main.py`
+`1.1.0` — matches `backend/app/main.py`
 
 ---
 
@@ -65,7 +65,7 @@ POST /api/v1/rounds
   "handicap_index": 13.2,
   "course_id": "pinehurst-2",
   "tee_box": {"tee_name": "Blue", "rating": 74.9, "slope": 134},
-  "hole_data": [{"hole_number": 1, "par": 4, "score": 5, "putts": 2, "fairway": false, "gir": false}],
+  "hole_data": [{"hole_number": 1, "par": 4, "score": 5, "putts": 2, "fairway": false, "gir": false, "first_putt": "mid", "penalty_strokes": 0}],
   "total_score": 85,
   "total_putts": 32
 }
@@ -79,7 +79,7 @@ POST /api/v1/rounds
   "course": {"name": "Creek Course", "city": "Lubbock", "state": "TX"},
   "handicap_index": 13.2,
   "manual_course": {"holes": 18, "par_values": [4,4,3,4,5,4,4,3,4,4,4,3,4,5,4,4,3,4]},
-  "hole_data": [{"hole_number": 1, "par": 4, "score": 5, "putts": 2, "fairway": false, "gir": false}],
+  "hole_data": [{"hole_number": 1, "par": 4, "score": 5, "putts": 2, "fairway": false, "gir": false, "first_putt": "mid", "penalty_strokes": 0}],
   "total_score": 94,
   "total_putts": 36
 }
@@ -89,6 +89,16 @@ POST /api/v1/rounds
 - `course_id` XOR `manual_course` — never both
 - `manual_course` → no `shots`, no `tee_box`
 - `hole_data` OR `shots` (or both)
+- `hole_data[].first_putt` is one of `tap_in` (<3ft), `short` (3-10ft),
+  `mid` (10-25ft), `long` (25ft+), or omitted. Putt count alone is ambiguous —
+  two putts from 40 feet is good play, two from 4 feet is not — so without it
+  putting and approach quality cannot be separated. Omitted is meaningful and
+  is not the same as a short putt: it means unrecorded.
+- `hole_data[].penalty_strokes` defaults to 0 and is **already included** in
+  `score`. Do not add it on top.
+- Per-hole entries are persisted to `hole_scores`, so rounds can be recomputed
+  when the strokes-gained model changes. Failure to store them does not fail
+  the request; the round and its stats still land.
 - `manual_course.par_values` is the whole course; `strokes_over_under` and
   `avg_score_to_par` count only the holes present in `hole_data`, matched by
   `hole_number`. A front-nine round on an 18-hole manual course is scored
@@ -220,6 +230,17 @@ GET /api/v1/rounds?user_id={uuid}&limit=20
 - `sg_putting`, `sg_approach` numeric
 - `strokes_over_under` numeric
 - `avg_putts_per_hole`, `avg_score_to_par` numeric
+- `total_penalty_strokes` int, nullable — null means the round predates collection
+- `avg_first_putt_ft` numeric, nullable — mean representative first-putt distance
+
+**`hole_scores`** (migration 020)
+- `id` BIGSERIAL PK
+- `round_id` BIGINT FK, `user_id` text
+- `hole_number`, `par`, `yardage`, `score`, `putts` int
+- `fairway`, `gir` boolean, nullable
+- `first_putt` text, nullable — `tap_in` | `short` | `mid` | `long`
+- `penalty_strokes` int, default 0
+- UNIQUE (`round_id`, `hole_number`)
 
 **`courses`**
 - `id` uuid PK
@@ -272,6 +293,7 @@ seam — this table is the reason it exists.
 | 2026-07-14 | 0.7.0 | Replaced `/coach/ask` with `/coach/chat`. Added `/coach/conversations` and `/{id}/messages`. Removed the 25+ handicap gate. Data-source-aware prompts. |
 | 2026-08-06 | 0.7.1 | Added `manual_course` to `POST /rounds` (migration 019). Mutually exclusive with `course_id`; rejects `shots`. |
 | 2026-08-21 | 0.7.1 | Fix: `manual_course` stats summed all par values regardless of holes played, so partial rounds reported a wrong `strokes_over_under`. Now matched by `hole_number`. |
+| 2026-08-28 | 1.1.0 | Added `first_putt` and `penalty_strokes` to `hole_data`, and the `hole_scores` table (migration 020). Per-hole data is now persisted rather than discarded, so rounds can be recomputed. `round_stats` gains `total_penalty_strokes` and `avg_first_putt_ft`. Both new fields are recorded but not yet used in the SG figures — see `docs/SG_REBUILD.md`. |
 
 `0.7.2` is proposed on `feature/coach-context-memory` (conversation summary,
 migration 020) and is **not** merged — see PR #16.

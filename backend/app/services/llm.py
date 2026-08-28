@@ -1,4 +1,4 @@
-"""Moonshot LLM client for coach generation."""
+"""LLM client for coach generation (OpenCode Go — OpenAI-compatible)."""
 import openai
 import json
 import os
@@ -52,12 +52,22 @@ def _log_response(raw_response: str, parsed: dict | None = None, usage: dict | N
     filepath.write_text("\n".join(lines), encoding="utf-8")
     return filepath
 
-# Configure Moonshot client (OpenAI-compatible API)
-moonshot_client = openai.OpenAI(
-    api_key=settings.moonshot_api_key,
-    base_url="https://api.moonshot.ai/v1",
+# Configure LLM client (OpenCode Go — OpenAI-compatible API)
+# Uses OPENCODE_API_KEY from env or .env file via settings
+# Note: pydantic-settings loads .env into settings.opencode_api_key,
+# but an empty env var would override it to "". Handle both cases.
+_env_key = os.environ.get("OPENCODE_API_KEY", "")
+llm_api_key = _env_key if _env_key else (settings.opencode_api_key or settings.moonshot_api_key)
+if not llm_api_key:
+    raise RuntimeError("No LLM API key found. Set OPENCODE_API_KEY in env or .env file.")
+llm_client = openai.OpenAI(
+    api_key=llm_api_key,
+    base_url=os.environ.get("OPENCODE_BASE_URL", "https://opencode.ai/zen/go/v1"),
     timeout=120.0,
 )
+# Model for coach responses — Kimi K2.6 via OpenCode Go
+# (deepseek-v4-flash is better/cheaper but requires China region opt-in)
+LLM_MODEL = os.environ.get("OPENCODE_MODEL", "kimi-k2.6")
 
 # ORIGINAL generator (No coach response)
 # def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
@@ -91,9 +101,9 @@ moonshot_client = openai.OpenAI(
 
 # Third option, 8000 tokens, use thinking (more expensive), so increase token budget.
 def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
-    """Call Moonshot kimi-k2.5 to generate a coaching response in Thinking Mode."""
-    response = moonshot_client.chat.completions.create(
-        model="kimi-k2.5",
+    """Call LLM to generate a coaching response in Thinking Mode."""
+    response = llm_client.chat.completions.create(
+        model=LLM_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -103,13 +113,13 @@ def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
     )
     raw = response.choices[0].message.content
     usage = response.usage.model_dump() if response.usage else None
-    model_used = response.model if response.model else "kimi-k2.5"
+    model_used = response.model if response.model else LLM_MODEL
     _log_response(raw, usage=usage, model=model_used)
     return raw
 
 
 def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> dict:
-    """Call Moonshot kimi-k2.5 to generate a structured JSON coaching response."""
+    """Call LLM to generate a structured JSON coaching response."""
     structured_system_prompt = (
         system_prompt + "\n\n"
         "You MUST respond with valid JSON only. No markdown, no prose outside the JSON. "
@@ -130,8 +140,8 @@ def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> 
         "}"
     )
 
-    response = moonshot_client.chat.completions.create(
-        model="kimi-k2.5",
+    response = llm_client.chat.completions.create(
+        model=LLM_MODEL,
         messages=[
             {"role": "system", "content": structured_system_prompt},
             {"role": "user", "content": user_prompt},
@@ -142,7 +152,7 @@ def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> 
 
     raw = response.choices[0].message.content.strip()
     usage = response.usage.model_dump() if response.usage else None
-    model_used = response.model if response.model else "kimi-k2.5"
+    model_used = response.model if response.model else LLM_MODEL
 
     # Moonshot sometimes wraps JSON in markdown code blocks — strip them
     if raw.startswith("```json"):

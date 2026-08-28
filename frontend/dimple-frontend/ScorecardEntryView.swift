@@ -2,14 +2,46 @@ import SwiftUI
 
 // MARK: - Per-hole working state
 
+/// How long the first putt was.
+///
+/// Putt count alone is ambiguous — two putts from 40 feet is good play, two
+/// from 4 feet is not — so without this, putting and approach quality cannot be
+/// told apart. Buckets rather than a number keeps it to a single tap.
+enum FirstPutt: String, CaseIterable, Hashable, Codable {
+    case tapIn = "tap_in"
+    case short
+    case mid
+    case long
+
+    var label: String {
+        switch self {
+        case .tapIn: "Tap-in"
+        case .short: "Short"
+        case .mid:   "Mid"
+        case .long:  "Long"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .tapIn: "under 3ft"
+        case .short: "3-10ft"
+        case .mid:   "10-25ft"
+        case .long:  "25ft+"
+        }
+    }
+}
+
 struct HoleState: Identifiable, Hashable {
     let holeNumber: Int
     let par: Int
     let yardage: Int?
     var score: Int
     var putts: Int
-    var fairway: Bool?   // nil = not recorded; always nil on par 3
-    var gir: Bool?       // nil = not recorded
+    var fairway: Bool?        // nil = not recorded; always nil on par 3
+    var gir: Bool?            // nil = not recorded
+    var firstPutt: FirstPutt? // nil = not recorded
+    var penaltyStrokes: Int
     var entered: Bool
 
     var id: Int { holeNumber }
@@ -55,7 +87,8 @@ final class ScorecardViewModel {
             guard let t = sel.holes.first(where: { $0.holeNumber == n }) else { return nil }
             return HoleState(holeNumber: n, par: t.par, yardage: t.yardage,
                              score: t.par, putts: min(2, max(t.par - 1, 0)),
-                             fairway: nil, gir: nil, entered: false)
+                             fairway: nil, gir: nil,
+                             firstPutt: nil, penaltyStrokes: 0, entered: false)
         }
         currentHoleNumber = nums.first ?? 1
         selectedNine = (nums.first ?? 1) <= 9 ? .front : .back
@@ -74,11 +107,15 @@ final class ScorecardViewModel {
             if let e = draft.holes.first(where: { $0.holeNumber == n }) {
                 return HoleState(holeNumber: n, par: e.par, yardage: e.yardage ?? t?.yardage,
                                  score: e.score, putts: e.putts ?? min(2, max(e.par - 1, 0)),
-                                 fairway: e.fairway, gir: e.gir, entered: true)
+                                 fairway: e.fairway, gir: e.gir,
+                                 firstPutt: e.firstPutt,
+                                 penaltyStrokes: e.penaltyStrokes ?? 0,
+                                 entered: true)
             }
             return HoleState(holeNumber: n, par: par, yardage: t?.yardage,
                              score: par, putts: min(2, max(par - 1, 0)),
-                             fairway: nil, gir: nil, entered: false)
+                             fairway: nil, gir: nil,
+                             firstPutt: nil, penaltyStrokes: 0, entered: false)
         }
         currentHoleNumber = draft.currentHoleNumber
         selectedNine = draft.currentHoleNumber <= 9 ? .front : .back
@@ -121,6 +158,7 @@ final class ScorecardViewModel {
         guard let i = idx(n) else { return }
         let maxP = max(holes[i].score - 1, 0)
         holes[i].putts = min(max(holes[i].putts + delta, 0), maxP)
+        if holes[i].putts == 0 { holes[i].firstPutt = nil }  // never putted
         holes[i].entered = true
         autosave()
     }
@@ -139,14 +177,33 @@ final class ScorecardViewModel {
         autosave()
     }
 
+    func setFirstPutt(_ n: Int, _ value: FirstPutt?) {
+        guard let i = idx(n) else { return }
+        // Toggle off if the same bucket is tapped again.
+        holes[i].firstPutt = (holes[i].firstPutt == value) ? nil : value
+        holes[i].entered = true
+        autosave()
+    }
+
+    func adjustPenalties(_ n: Int, _ delta: Int) {
+        guard let i = idx(n) else { return }
+        holes[i].penaltyStrokes = min(max(holes[i].penaltyStrokes + delta, 0), 9)
+        holes[i].entered = true
+        autosave()
+    }
+
     /// Hole-in-one and eagle auto-fills (spec edge cases).
     private func applyAutoRules(_ h: inout HoleState) {
         if h.score == 1 {
             h.putts = 0
             h.gir = true
             h.fairway = h.isPar3 ? nil : true
+            h.firstPutt = nil          // never putted
         } else if h.score <= h.par - 2 {
             h.gir = true   // can't eagle without hitting the green in regulation
+        }
+        if h.putts == 0 {
+            h.firstPutt = nil          // holed out from off the green
         }
     }
 
@@ -180,7 +237,8 @@ final class ScorecardViewModel {
     func autosave() {
         let entries = enteredHoles.map {
             HoleEntry(holeNumber: $0.holeNumber, par: $0.par, yardage: $0.yardage,
-                      score: $0.score, putts: $0.putts, fairway: $0.fairway, gir: $0.gir)
+                      score: $0.score, putts: $0.putts, fairway: $0.fairway, gir: $0.gir,
+                      firstPutt: $0.firstPutt, penaltyStrokes: $0.penaltyStrokes)
         }
         let draft = DraftRound(
             courseId: courseId, courseName: courseName, city: city, state: state,
@@ -201,7 +259,9 @@ final class ScorecardViewModel {
         let payloadHoles = enteredHoles.map {
             HolePayload(hole_number: $0.holeNumber, par: $0.par, yardage: $0.yardage,
                         score: $0.score, putts: $0.putts,
-                        fairway: $0.isPar3 ? nil : $0.fairway, gir: $0.gir)
+                        fairway: $0.isPar3 ? nil : $0.fairway, gir: $0.gir,
+                        first_putt: $0.firstPutt?.rawValue,
+                        penalty_strokes: $0.penaltyStrokes)
         }
         do {
             let resp = try await RoundService.shared.submit(
@@ -266,12 +326,15 @@ struct ScorecardEntryView: View {
 
     // MARK: Top — hole + running totals
 
+    // Hole number and par share one line rather than stacking, and the running
+    // totals sit tighter. Five entry fields below need the vertical space more
+    // than this header does.
     private func topZone(_ h: HoleState) -> some View {
-        VStack(spacing: 10) {
-            VStack(spacing: 2) {
+        VStack(spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Hole \(h.holeNumber)")
-                    .font(.system(.title, design: .rounded)).fontWeight(.bold)
-                HStack(spacing: 6) {
+                    .font(.system(.title3, design: .rounded)).fontWeight(.bold)
+                HStack(spacing: 5) {
                     Text("Par \(h.par)")
                     if let y = h.yardage, y > 0 { Text("· \(y) yds") }
                 }
@@ -286,12 +349,12 @@ struct ScorecardEntryView: View {
                 stat("Putts", "\(vm.totalPutts)")
             }
         }
-        .padding(.horizontal).padding(.top, 8).padding(.bottom, 12)
+        .padding(.horizontal).padding(.top, 6).padding(.bottom, 8)
         .background(Color(.secondarySystemBackground))
     }
 
     private func stat(_ title: String, _ value: String, color: Color = Color(.label)) -> some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 1) {
             Text(value).font(.system(.title3, design: .rounded)).fontWeight(.bold)
                 .foregroundStyle(color).monospacedDigit().contentTransition(.numericText())
             Text(title).font(.caption2).foregroundStyle(Color(.secondaryLabel))
@@ -300,34 +363,108 @@ struct ScorecardEntryView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var divider: some View { Rectangle().fill(Color(.separator)).frame(width: 0.5, height: 30) }
+    private var divider: some View { Rectangle().fill(Color(.separator)).frame(width: 0.5, height: 24) }
 
     // MARK: Middle — fairway / GIR / putts
 
     private func middleZone(_ h: HoleState) -> some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 12)
+            Spacer(minLength: 6)
             if !h.isPar3 {
                 field("Fairway") {
                     TriToggle(leftLabel: "Missed", rightLabel: "Hit", value: h.fairway) {
                         vm.setFairway(h.holeNumber, $0)
                     }
                 }
-                Spacer(minLength: 12)
+                Spacer(minLength: 6)
             }
             field("Green in Regulation") {
                 TriToggle(leftLabel: "No", rightLabel: "Yes", value: h.gir) {
                     vm.setGir(h.holeNumber, $0)
                 }
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: 6)
             puttsField(h)
-            Spacer(minLength: 12)
+            if h.putts > 0 {
+                Spacer(minLength: 6)
+                firstPuttField(h)
+            }
+            Spacer(minLength: 6)
+            penaltyRow(h)
+            Spacer(minLength: 6)
         }
     }
 
+    /// One tap, four buckets. Only shown when the hole was actually putted.
+    private func firstPuttField(_ h: HoleState) -> some View {
+        field("First Putt") {
+            HStack(spacing: 8) {
+                ForEach(FirstPutt.allCases, id: \.self) { option in
+                    let selected = h.firstPutt == option
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        vm.setFirstPutt(h.holeNumber, option)
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text(option.label)
+                                .font(.subheadline).fontWeight(.semibold)
+                            Text(option.detail)
+                                .font(.caption2)
+                                .foregroundStyle(selected ? Color.white.opacity(0.85)
+                                                          : Color(.secondaryLabel))
+                        }
+                        .frame(maxWidth: .infinity).frame(height: 46)
+                        .foregroundStyle(selected ? Color.white : Color.forestGreen)
+                        .background(selected ? Color.forestGreen : Color.forestGreen.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(option.label), \(option.detail)")
+                    .accessibilityAddTraits(selected ? [.isSelected] : [])
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    /// Stays out of the way: almost always zero, so it reads as a quiet row
+    /// until it isn't.
+    private func penaltyRow(_ h: HoleState) -> some View {
+        HStack(spacing: 12) {
+            Text("Penalty Shots")
+                .font(.subheadline)
+                .foregroundStyle(h.penaltyStrokes > 0 ? Color(.label) : Color(.secondaryLabel))
+            Spacer()
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                vm.adjustPenalties(h.holeNumber, -1)
+            } label: {
+                Image(systemName: "minus").frame(width: 40, height: 36)
+            }
+            .buttonStyle(.plain)
+            .disabled(h.penaltyStrokes == 0)
+            .foregroundStyle(h.penaltyStrokes == 0 ? Color(.tertiaryLabel) : Color.forestGreen)
+
+            Text("\(h.penaltyStrokes)")
+                .font(.headline).monospacedDigit().frame(minWidth: 22)
+                .foregroundStyle(h.penaltyStrokes > 0 ? Color.forestGreen : Color(.tertiaryLabel))
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                vm.adjustPenalties(h.holeNumber, +1)
+            } label: {
+                Image(systemName: "plus").frame(width: 40, height: 36)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.forestGreen)
+        }
+        .padding(.horizontal)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Penalty shots, \(h.penaltyStrokes)")
+    }
+
     private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             Text(label).font(.headline)
             content()
         }
@@ -335,7 +472,7 @@ struct ScorecardEntryView: View {
     }
 
     private func puttsField(_ h: HoleState) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             Text("Putts").font(.headline)
             BigStepper(
                 valueText: "\(h.putts)", size: .small,
@@ -353,23 +490,29 @@ struct ScorecardEntryView: View {
 
     // MARK: Bottom — score + primary action (pinned thumb zone)
 
+    // The score label used to sit on its own line above the stepper. There is
+    // dead space either side of the stepper, so it moves in beside it and the
+    // whole bar loses a row.
     private func bottomZone(_ h: HoleState) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             HStack(spacing: 8) {
-                Text("Score").font(.headline)
-                Text(formatToPar(h.toPar)).font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(Color.scoreTone(h.toPar))
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Score").font(.subheadline).fontWeight(.semibold)
+                    Text(formatToPar(h.toPar)).font(.caption).fontWeight(.semibold)
+                        .foregroundStyle(Color.scoreTone(h.toPar))
+                }
+                Spacer(minLength: 0)
+                BigStepper(
+                    valueText: "\(h.score)", size: .large,
+                    minusEnabled: h.score > 1, plusEnabled: true,
+                    onMinus: { vm.adjustScore(h.holeNumber, -1) },
+                    onPlus:  { vm.adjustScore(h.holeNumber, +1) }
+                )
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
-            BigStepper(
-                valueText: "\(h.score)", size: .large,
-                minusEnabled: h.score > 1, plusEnabled: true,
-                onMinus: { vm.adjustScore(h.holeNumber, -1) },
-                onPlus:  { vm.adjustScore(h.holeNumber, +1) }
-            )
             actionRow
         }
-        .padding(.horizontal).padding(.top, 12).padding(.bottom, 8)
+        .padding(.horizontal).padding(.top, 8).padding(.bottom, 6)
         .background(.ultraThinMaterial)
     }
 

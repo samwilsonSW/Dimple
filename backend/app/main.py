@@ -21,7 +21,7 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.include_router(courses.router)
@@ -251,6 +251,35 @@ def ingest_round(payload: RoundPayload):
 
     shots_with_sg = sum(1 for r in embeddings_rows if r.get("sg_value") is not None)
 
+    # Persist the raw per-hole entries.
+    #
+    # These used to be consumed for stats and thrown away, which meant no round
+    # could ever be recomputed — every model improvement applied only to future
+    # rounds while history stayed wrong. Storing them is what makes the
+    # strokes-gained rebuild retroactive. Failure here must not lose the round.
+    holes_stored = 0
+    if payload.hole_data:
+        try:
+            supabase.table("hole_scores").insert([
+                {
+                    "round_id": round_id,
+                    "user_id": payload.user_id,
+                    "hole_number": h.hole_number,
+                    "par": h.par,
+                    "yardage": h.yardage,
+                    "score": h.score,
+                    "putts": h.putts,
+                    "fairway": h.fairway,
+                    "gir": h.gir,
+                    "first_putt": h.first_putt,
+                    "penalty_strokes": h.penalty_strokes,
+                }
+                for h in payload.hole_data
+            ]).execute()
+            holes_stored = len(payload.hole_data)
+        except Exception as e:
+            print(f"Warning: Failed to store hole scores: {e}")
+
     # Calculate scorecard stats if hole_data provided
     round_stats = None
     if payload.hole_data:
@@ -284,6 +313,7 @@ def ingest_round(payload: RoundPayload):
         "shots_with_sg": shots_with_sg,
         "handicap_index": payload.handicap_index,
         "reflection_saved": payload.reflection is not None,
+        "holes_stored": holes_stored,
         "status": "success",
     }
     if round_stats:
@@ -620,16 +650,19 @@ def coach_chat(request: CoachChatRequest):
             pass
     else:
         # Create new conversation
-        try:
-            title = "Coach Chat"
-            if request.round_id:
-                # Get round info for title
+        title = "Coach Chat"
+        if request.round_id:
+            # Get round info for title — non-fatal if this fails
+            try:
                 round_result = supabase.table("rounds").select("course, round_date").eq("id", request.round_id).single().execute()
                 if round_result.data:
                     course_name = round_result.data.get("course", {}).get("name", "Unknown Course")
                     round_date = round_result.data.get("round_date", "")
                     title = f"Round at {course_name} — {round_date}"
-            
+            except Exception as e:
+                logger.warning(f"Round lookup failed for round_id={request.round_id}: {e}. Using default title.")
+        
+        try:
             conv_result = supabase.table("conversations").insert({
                 "user_id": request.user_id,
                 "round_id": request.round_id,
@@ -637,7 +670,24 @@ def coach_chat(request: CoachChatRequest):
             }).execute()
             conversation_id = conv_result.data[0]["id"]
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
+            # If the round_id FK constraint fails, retry with round_id=NULL
+            # so the user can still chat even if the round was deleted.
+            if request.round_id and "23503" in str(e):
+                logger.warning(
+                    f"FK violation on conversations.round_id={request.round_id}: {e}. "
+                    f"Retrying with round_id=NULL."
+                )
+                try:
+                    conv_result = supabase.table("conversations").insert({
+                        "user_id": request.user_id,
+                        "round_id": None,
+                        "title": title,
+                    }).execute()
+                    conversation_id = conv_result.data[0]["id"]
+                except Exception as e2:
+                    raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e2)}")
+            else:
+                raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
     
     # 2) Fetch conversation history (last 6 messages)
     conversation_history = []

@@ -9,20 +9,30 @@
 
 ## Right Now
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Branch:** `Kanary` (working) → `main` (release)  
 **API:** `https://dimple-api.chokepointmonitor.com`
 
 ### Working
 - Course search + selection
-- Scorecard entry (per-hole, auto-save)
+- Scorecard entry (per-hole, auto-save, first-putt distance + penalty shots)
 - Round history with stats
 - AI Coach chat (conversational, data-aware)
 - Manual course entry (verified on device 22 Aug — full round entered end to end)
 
 ### In Progress
-- Nothing. v1.0.0 is code-complete on `Kanary`; the release merge is the last step.
-- Auto-chat-titles (built, ready to merge)
+- Strokes-gained rebuild. The committed baselines are wrong by 5-17 strokes a
+  round (`cd backend && uv run python scripts/audit_sg.py`). A replacement is
+  solved from published shot dispersion and grades far better, but still runs
+  short on putts and scoring. Nothing is wired into the live SG path yet, so no
+  displayed number has changed. See `docs/SG_REBUILD.md`.
+- Round history still shows blank `P` and `F` chips. They stay blank until the
+  rebuilt baselines land — that is the actual blocker, not the wiring.
+
+### Needs doing by hand
+- Migration 020 (`hole_scores`) is applied to the live project. Any other
+  environment needs it run in the Supabase SQL editor before rounds will store
+  per-hole data. Without it, ingestion still succeeds and logs a warning.
 
 ### Blocked / Deferred
 - Coach loading indicator — parked post-v1.0.0
