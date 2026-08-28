@@ -142,10 +142,55 @@ something.
 It also fixes §1 and §2 structurally: a surface derived from make-rates and
 proximity cannot drift 17 strokes from observed scoring without the fit screaming.
 
-**Needs:** shot-pattern priors. Three sources, in preference order — published
-amateur dispersion data; the app's own shot-by-shot rounds once enough exist
-(this is the virtuous loop, and matches the product principle in AGENTS.md); or a
-documented physical prior with the sensitivity reported, as a stopgap.
+**Status: built, partially working.** `dispersion.py` + `expected_strokes.py`,
+graded by `scripts/solve_baselines.py`. Fit on `avg_putts`, `gir_pct` and
+`avg_score`; `up_down_pct` held out.
+
+The headline error is largely fixed:
+
+| handicap | committed error | solved error | improvement |
+|---:|---:|---:|---:|
+| 0 | −4.85 | −1.60 | 3.0× |
+| 15 | −12.89 | −2.31 | 5.6× |
+| 25 | −17.07 | −1.65 | 10.3× |
+
+Three defects remain, and they share one cause:
+
+1. **Solved putting `d50` collapses** — 6.3 ft at scratch, but 3.4 ft at 15 and
+   2.9 ft at 25, meaning half of all putts missed from under a yard. No golfer
+   putts like that.
+2. **The up-and-down holdout fails badly** — RMSE 0.283, bias −0.276, predicting
+   0.139 against 0.500 observed at scratch.
+3. **Penalties absorb error at high handicaps** — 5.5 and 5.9 strokes a round at
+   20 and 25, above the plausible ceiling. The scoring match at those brackets is
+   bought, not earned.
+
+The common cause is that **there is no short-game model**. The recursion treats a
+greenside shot as an ordinary approach with approach dispersion. A chip from 20
+yards is a different skill, and it is what sets both the up-and-down rate and the
+first-putt distance after a missed green. Get it wrong and first-putt distances
+are wrong, so the putting calibration distorts to compensate — which is exactly
+the pattern in defects 1 and 2. The plausibility checks were built to catch this
+kind of compensation and they caught it.
+
+**Next:** a greenside model — proximity from 5–50 yards by lie — then re-solve.
+This should fix all three at once, and `up_down_pct` moves from holdout to fit
+target, with `fairway_pct` freed to become the new holdout.
+
+**Needs, in priority order.** Published amateur data, most valuable first:
+
+1. **Greenside proximity by distance and lie** (5/10/20/30/50 yards, from
+   fairway, rough, sand) — the missing model above.
+2. **Putting make rate by distance and handicap** (3/5/8/10/15/20/30/40 ft) —
+   replaces the assumed log-logistic outright and stops `d50` absorbing error.
+   Shot Scope and Broadie both publish these.
+3. **Approach proximity by distance and lie** — would let approach dispersion be
+   read off rather than bisected against GIR.
+4. **Penalty strokes per round by handicap** — turns the one fitted fudge
+   parameter into a measured input, restoring `avg_score` as a clean holdout.
+
+Do not transcribe these from memory. Every number that lands should carry its
+source in `dispersion.py`, and its tag moves from ASSUMED to MEASURED.
 
 ### Phase 2 — One SG primitive, with units in the type system
 
@@ -236,6 +281,9 @@ candidate. The first behaviour change should be a deliberate, separate merge.
 | `backend/scripts/audit_sg.py` | The diagnosis, as 8 runnable checks. Exits non-zero; ready to join the smoke test once green. |
 | `backend/app/core/baseline_fit.py` | The rescaling candidate and its recorded failure. |
 | `backend/scripts/fit_baselines.py` | Fit, holdout, and sensitivity report. |
+| `backend/app/core/dispersion.py` | Physical shot-dispersion parameters, each tagged MEASURED / DERIVED / ASSUMED. |
+| `backend/app/core/expected_strokes.py` | The surface, solved from dispersion by value iteration. |
+| `backend/scripts/solve_baselines.py` | Solves and grades it: fit, plausibility, holdout, sensitivity. |
 | `docs/SG_REBUILD.md` | This file. |
 
 No endpoints, models, or migrations were touched, so `openapi.json` is unchanged.
