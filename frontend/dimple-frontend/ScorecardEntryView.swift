@@ -306,19 +306,9 @@ struct ScorecardEntryView: View {
                 VStack(spacing: 0) {
                     topZone(h)
                     Divider()
-                    // Scrolls only when it has to. `minHeight` keeps the
-                    // Spacers inside doing their job on a roomy screen, so the
-                    // fields stay spread out rather than bunching at the top;
-                    // on a small phone with five fields it becomes scrollable
-                    // instead of clipping.
-                    GeometryReader { proxy in
-                        ScrollView {
-                            middleZone(h)
-                                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
-                                .padding(.horizontal)
-                        }
-                        .scrollBounceBehavior(.basedOnSize)
-                    }
+                    middleZone(h)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.horizontal)
                 }
                 .safeAreaInset(edge: .bottom) { bottomZone(h) }
             }
@@ -336,12 +326,15 @@ struct ScorecardEntryView: View {
 
     // MARK: Top — hole + running totals
 
+    // Hole number and par share one line rather than stacking, and the running
+    // totals sit tighter. Five entry fields below need the vertical space more
+    // than this header does.
     private func topZone(_ h: HoleState) -> some View {
-        VStack(spacing: 10) {
-            VStack(spacing: 2) {
+        VStack(spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Hole \(h.holeNumber)")
-                    .font(.system(.title, design: .rounded)).fontWeight(.bold)
-                HStack(spacing: 6) {
+                    .font(.system(.title3, design: .rounded)).fontWeight(.bold)
+                HStack(spacing: 5) {
                     Text("Par \(h.par)")
                     if let y = h.yardage, y > 0 { Text("· \(y) yds") }
                 }
@@ -356,12 +349,12 @@ struct ScorecardEntryView: View {
                 stat("Putts", "\(vm.totalPutts)")
             }
         }
-        .padding(.horizontal).padding(.top, 8).padding(.bottom, 12)
+        .padding(.horizontal).padding(.top, 6).padding(.bottom, 8)
         .background(Color(.secondarySystemBackground))
     }
 
     private func stat(_ title: String, _ value: String, color: Color = Color(.label)) -> some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 1) {
             Text(value).font(.system(.title3, design: .rounded)).fontWeight(.bold)
                 .foregroundStyle(color).monospacedDigit().contentTransition(.numericText())
             Text(title).font(.caption2).foregroundStyle(Color(.secondaryLabel))
@@ -370,35 +363,35 @@ struct ScorecardEntryView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var divider: some View { Rectangle().fill(Color(.separator)).frame(width: 0.5, height: 30) }
+    private var divider: some View { Rectangle().fill(Color(.separator)).frame(width: 0.5, height: 24) }
 
     // MARK: Middle — fairway / GIR / putts
 
     private func middleZone(_ h: HoleState) -> some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 12)
+            Spacer(minLength: 6)
             if !h.isPar3 {
                 field("Fairway") {
                     TriToggle(leftLabel: "Missed", rightLabel: "Hit", value: h.fairway) {
                         vm.setFairway(h.holeNumber, $0)
                     }
                 }
-                Spacer(minLength: 12)
+                Spacer(minLength: 6)
             }
             field("Green in Regulation") {
                 TriToggle(leftLabel: "No", rightLabel: "Yes", value: h.gir) {
                     vm.setGir(h.holeNumber, $0)
                 }
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: 6)
             puttsField(h)
             if h.putts > 0 {
-                Spacer(minLength: 12)
+                Spacer(minLength: 6)
                 firstPuttField(h)
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: 6)
             penaltyRow(h)
-            Spacer(minLength: 12)
+            Spacer(minLength: 6)
         }
     }
 
@@ -420,7 +413,7 @@ struct ScorecardEntryView: View {
                                 .foregroundStyle(selected ? Color.white.opacity(0.85)
                                                           : Color(.secondaryLabel))
                         }
-                        .frame(maxWidth: .infinity).frame(height: 50)
+                        .frame(maxWidth: .infinity).frame(height: 46)
                         .foregroundStyle(selected ? Color.white : Color.forestGreen)
                         .background(selected ? Color.forestGreen : Color.forestGreen.opacity(0.10))
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -471,7 +464,7 @@ struct ScorecardEntryView: View {
     }
 
     private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             Text(label).font(.headline)
             content()
         }
@@ -479,7 +472,7 @@ struct ScorecardEntryView: View {
     }
 
     private func puttsField(_ h: HoleState) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             Text("Putts").font(.headline)
             BigStepper(
                 valueText: "\(h.putts)", size: .small,
@@ -497,23 +490,29 @@ struct ScorecardEntryView: View {
 
     // MARK: Bottom — score + primary action (pinned thumb zone)
 
+    // The score label used to sit on its own line above the stepper. There is
+    // dead space either side of the stepper, so it moves in beside it and the
+    // whole bar loses a row.
     private func bottomZone(_ h: HoleState) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             HStack(spacing: 8) {
-                Text("Score").font(.headline)
-                Text(formatToPar(h.toPar)).font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(Color.scoreTone(h.toPar))
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Score").font(.subheadline).fontWeight(.semibold)
+                    Text(formatToPar(h.toPar)).font(.caption).fontWeight(.semibold)
+                        .foregroundStyle(Color.scoreTone(h.toPar))
+                }
+                Spacer(minLength: 0)
+                BigStepper(
+                    valueText: "\(h.score)", size: .large,
+                    minusEnabled: h.score > 1, plusEnabled: true,
+                    onMinus: { vm.adjustScore(h.holeNumber, -1) },
+                    onPlus:  { vm.adjustScore(h.holeNumber, +1) }
+                )
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
-            BigStepper(
-                valueText: "\(h.score)", size: .large,
-                minusEnabled: h.score > 1, plusEnabled: true,
-                onMinus: { vm.adjustScore(h.holeNumber, -1) },
-                onPlus:  { vm.adjustScore(h.holeNumber, +1) }
-            )
             actionRow
         }
-        .padding(.horizontal).padding(.top, 12).padding(.bottom, 8)
+        .padding(.horizontal).padding(.top, 8).padding(.bottom, 6)
         .background(.ultraThinMaterial)
     }
 
