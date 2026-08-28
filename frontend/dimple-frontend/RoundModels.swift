@@ -199,6 +199,8 @@ struct RoundStats: Decodable {
     let fairways_possible: Int?
     let fairway_percentage: Double?
     let sg_putting: Double?
+    let sg_short: Double?
+    let sg_driving: Double?
     let sg_approach: Double?
     let strokes_over_under: Double?
     let avg_putts_per_hole: Double?

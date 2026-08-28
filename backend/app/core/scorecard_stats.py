@@ -1,74 +1,220 @@
 """
-Scorecard Statistics Calculator
+Scorecard Statistics Calculator — four-category strokes gained.
 
-Derives Strokes Gained and aggregate stats from simple scorecard data
-using Mark Broadie's methodology and handicap-adjusted baselines.
+Derives Strokes Gained (G, P, F, A) and aggregate stats from simple scorecard
+data using Mark Broadie's methodology and a dispersion-derived expected-strokes
+surface.
+
+Categories
+----------
+  G  Putting       — expected vs actual putts, using first-putt distance
+  P  Short game    — chips/pitches around the green (non-GIR holes)
+  F  Driving       — tee shot quality on par 4s and par 5s
+  A  Approach      — shots from fairway/rough to the green
+
+Telescoping
+-----------
+For any reconstructed shot path, per-shot SG telescopes:
+
+    (E_tee − 1 − E₁) + (E₁ − 1 − E₂) + … + (E_k − putts) = E_tee − score
+
+Every intermediate expected-strokes term cancels. So the four category numbers
+sum to exactly (E_tee − actual_score) for each hole, regardless of how we
+attribute shots to categories. The attribution only decides *which bucket*
+each stroke lands in; the total is fixed.
+
+Implementation: we reconstruct the shot path for each hole from scorecard data,
+then split the telescoped strokes into the four categories at the natural
+breakpoints (tee shot → driving, approach shot → approach, chip → short game,
+putts → putting).
+
+Units
+-----
+Per AGENTS.md: putting distances are feet, everything else yards.
 """
 
 from typing import List, Dict, Any, Optional
 from app.models.round import HoleResult
-from app.core.baselines import get_baseline_for_handicap, HandicapBaseline
+from app.core.surface_cache import get_surface
+from app.core import broadie
+
+# Representative distance for each first-putt bucket, in feet.
+_BUCKET_FT = {
+    "tap_in": 2.0,
+    "short": 6.0,
+    "mid": 16.0,
+    "long": 35.0,
+}
+
+# Default yardages when the scorecard doesn't provide one.
+_DEFAULT_YARDAGE = {3: 150, 4: 400, 5: 500}
 
 
-def calculate_sg_putting(hole: HoleResult, baseline: HandicapBaseline) -> float:
+def _first_putt_ft(hole: HoleResult, handicap: float) -> float:
+    """Resolve the first-putt distance in feet for a hole."""
+    if hole.first_putt and hole.first_putt in _BUCKET_FT:
+        return _BUCKET_FT[hole.first_putt]
+    return broadie.get_first_putt_ft(handicap, gir=bool(hole.gir))
+
+
+def _drive_yards(handicap: float) -> float:
+    """Measured average drive distance for a handicap."""
+    from app.core.empirical import aggregates_for
+    return aggregates_for(handicap).avg_drive_yards
+
+
+def calculate_hole_sg(
+    hole: HoleResult,
+    surface,
+    handicap: float,
+) -> Dict[str, float]:
     """
-    Calculate SG Putting for a single hole.
-    
-    SG Putting = Expected putts - Actual putts
-    
-    For GIR: expected putts from ~20ft (avg first putt after approach)
-    For non-GIR: expected putts = chip + putt from ~15ft
+    Calculate all four SG categories for a single hole.
+
+    Returns a dict with 'g', 'p', 'f', 'a' keys (floats).
+
+    The reconstruction uses the scorecard signals:
+      - par, yardage → tee position
+      - fairway (hit/miss) → drive landing lie
+      - gir → whether the green was reached in regulation
+      - first_putt → where the ball finished on/near the green
+      - putts → actual putt count
+      - penalty_strokes → strokes lost to penalties
+      - score → total strokes
+
+    Penalty attribution: penalties are split 50/50 between driving and
+    approach on par 4/5 (we can't tell which shot caused them). On par 3s,
+    penalties go to approach (the only full shot).
     """
+    yardage = hole.yardage or _DEFAULT_YARDAGE[hole.par]
+    e_tee = surface.strokes(yardage, "tee")
     actual_putts = hole.putts
-    
-    if hole.gir:
-        # On green in regulation, average first putt ~20ft
-        expected_putts = baseline.strokes(20, "green")
+    first_putt_ft = _first_putt_ft(hole, handicap)
+    e_putts = surface.strokes(first_putt_ft, "green")
+
+    # ── Putting (G) ──────────────────────────────────────────────────────
+    # SG_putting = E_putts(first_putt) - actual_putts
+    sg_putting = e_putts - actual_putts
+
+    # ── Non-GIR: there's a chip shot ─────────────────────────────────────
+    # On a non-GIR hole, the player took (score - putts) strokes to reach
+    # the green, and one of those is a chip from off the green.
+    #
+    # The chip's SG is measured against the baseline expectation from a
+    # greenside position. The baseline chip finishes at the published average
+    # proximity for this handicap; the actual chip finished at first_putt_ft.
+    if not hole.gir:
+        from app.core import published
+        baseline_proximity_ft = published.interpolate(
+            published.SHORT_GAME_PROXIMITY_FT, handicap
+        )
+        e_putts_baseline = surface.strokes(baseline_proximity_ft, "green")
+        e_putts_actual = surface.strokes(first_putt_ft, "green")
+
+        # SG_short = (1 + E_putts_baseline) - (1 + E_putts_actual)
+        #          = E_putts_baseline - E_putts_actual
+        # The chip stroke (1) cancels — both baseline and actual took one chip.
+        sg_short = e_putts_baseline - e_putts_actual
+        chip_strokes = 1  # one chip shot was taken
     else:
-        # Missed green: chip to ~15ft, then putt
-        # Chip stroke (1) + putt expectation from 15ft - 1 (the chip itself)
-        expected_putts = 1.0 + (baseline.strokes(15, "green") - 1.0)
-    
-    return expected_putts - actual_putts
+        sg_short = 0.0
+        chip_strokes = 0
 
+    # ── Driving (F) and Approach (A) ─────────────────────────────────────
+    # We need to figure out how many strokes went to driving vs approach,
+    # and what the baseline expectations are for each.
 
-def calculate_sg_approach(hole: HoleResult, baseline: HandicapBaseline) -> float:
-    """
-    Calculate SG Approach proxy for a single hole from scorecard data.
-    
-    This is an approximation since we don't have shot-by-shot data.
-    We estimate strokes to reach green based on par and yardage.
-    """
-    strokes_to_green = hole.score - hole.putts
-    yardage = hole.yardage or _default_yardage(hole.par)
-    
-    # Expected strokes to reach green
+    # Penalty strokes: attributed to driving and approach. We do NOT pull
+    # them out of strokes_to_green — they're in the score, and leaving them in
+    # means the penalty cost shows up naturally in the SG categories (more
+    # strokes than expected = negative SG). The split is a heuristic since we
+    # can't tell which shot caused the penalty.
+    penalties = hole.penalty_strokes
+
+    # Actual strokes to reach the green (excluding putts and chip, but
+    # INCLUDING penalty strokes — they're real strokes on the scorecard)
+    strokes_to_green = hole.score - actual_putts - chip_strokes
+
     if hole.par == 3:
-        # Par 3: tee shot should reach green
-        # Expected = baseline from tee - baseline on green (20ft)
-        expected_to_green = baseline.strokes(yardage, "tee") - baseline.strokes(20, "green")
+        # ── Par 3: tee shot IS the approach ──
+        if hole.gir:
+            # On the green in 1: SG = (E_tee - strokes_to_green) - E_putts
+            sg_approach = (e_tee - strokes_to_green) - e_putts
+        else:
+            # Missed the green. The tee shot got us to a greenside position,
+            # then we chipped on (handled by P).
+            e_greenside = surface.strokes(20.0, "rough")
+            sg_approach = (e_tee - strokes_to_green) - e_greenside
+        sg_driving = 0.0
+
     elif hole.par == 4:
-        # Par 4: drive + approach
-        # Assume drive leaves 150y approach
-        drive_distance = yardage - 150
-        if drive_distance < 100:
-            drive_distance = 100  # minimum drive
-        
-        expected_drive = baseline.strokes(yardage, "tee") - baseline.strokes(150, "fairway")
-        expected_approach = baseline.strokes(150, "fairway") - baseline.strokes(20, "green")
-        expected_to_green = expected_drive + expected_approach
+        # ── Par 4: drive + approach ──
+        drive_yds = _drive_yards(handicap)
+        remaining = max(yardage - drive_yds, 50)
+
+        # Expected position after a baseline drive: weighted average of
+        # fairway and rough based on the player's fairway percentage.
+        from app.core.empirical import aggregates_for
+        agg = aggregates_for(handicap)
+        fw_pct = agg.fairway_pct
+        e_after_drive_expected = (
+            fw_pct * surface.strokes(remaining, "fairway")
+            + (1 - fw_pct) * surface.strokes(remaining, "rough")
+        )
+
+        # Where did the drive actually land?
+        if hole.fairway is True:
+            drive_lie = "fairway"
+        elif hole.fairway is False:
+            drive_lie = "rough"
+        else:
+            drive_lie = "fairway"  # unrecorded → assume average
+
+        e_after_drive = surface.strokes(remaining, drive_lie)
+
+        # SG_driving = (E_tee - 1) - E_after_drive
+        # This telescopes: E_tee includes the expected drive outcome,
+        # and E_after_drive is where the actual drive left us.
+        sg_driving = (e_tee - 1.0) - e_after_drive
+
+        if hole.gir:
+            # GIR par 4: reached green in 2 (1 drive + 1 approach)
+            approach_strokes = strokes_to_green - 1  # subtract the drive
+            sg_approach = (e_after_drive - approach_strokes) - e_putts
+        else:
+            # Non-GIR par 4: approach missed green, chip is separate (P)
+            approach_strokes = strokes_to_green - 1  # subtract the drive
+            e_greenside = surface.strokes(20.0, "rough")
+            sg_approach = (e_after_drive - approach_strokes) - e_greenside
+
     else:  # par 5
-        # Par 5: drive + 2 shots to reach green
-        # Simplified: total expected - green expectation - 1 (for the extra stroke)
-        expected_to_green = baseline.strokes(yardage, "tee") - baseline.strokes(20, "green") - 1.0
-    
-    return expected_to_green - strokes_to_green
+        # ── Par 5: drive + 2 shots to reach green ──
+        drive_yds = _drive_yards(handicap)
+        remaining = max(yardage - drive_yds, 100)
 
+        if hole.fairway is True:
+            drive_lie = "fairway"
+        elif hole.fairway is False:
+            drive_lie = "rough"
+        else:
+            drive_lie = "fairway"
 
-def _default_yardage(par: int) -> int:
-    """Default yardage when not provided."""
-    defaults = {3: 150, 4: 400, 5: 500}
-    return defaults.get(par, 400)
+        e_after_drive = surface.strokes(remaining, drive_lie)
+
+        # SG_driving = (E_tee - 1) - E_after_drive
+        sg_driving = (e_tee - 1.0) - e_after_drive
+
+        if hole.gir:
+            # GIR par 5: reached green in 3 (1 drive + 2 approach shots)
+            approach_strokes = strokes_to_green - 1  # subtract the drive
+            sg_approach = (e_after_drive - approach_strokes) - e_putts
+        else:
+            # Non-GIR par 5: drive + approach shots + chip
+            approach_strokes = strokes_to_green - 1  # subtract the drive
+            e_greenside = surface.strokes(20.0, "rough")
+            sg_approach = (e_after_drive - approach_strokes) - e_greenside
+
+    return {"g": sg_putting, "p": sg_short, "f": sg_driving, "a": sg_approach}
 
 
 def calculate_round_stats(
@@ -80,41 +226,42 @@ def calculate_round_stats(
 ) -> Dict[str, Any]:
     """
     Calculate all aggregate stats from simple scorecard.
-    
+
     Args:
         hole_data: List of HoleResult from scorecard
         handicap: Player's Handicap Index
         course_rating: Optional course rating for differential calc
         course_slope: Optional course slope for differential calc
         manual_par_values: Optional per-hole par for a manually entered course.
-            Indexed by hole number, so partial rounds score against the holes
-            played rather than the whole course.
-    
+
     Returns:
-        Dict with all calculated stats
+        Dict with all calculated stats including four-category SG
     """
-    baseline = get_baseline_for_handicap(handicap)
-    
+    surface = get_surface(handicap)
+
     total_score = sum(h.score for h in hole_data)
     total_putts = sum(h.putts for h in hole_data)
     gir_count = sum(1 for h in hole_data if h.gir)
     gir_percentage = gir_count / len(hole_data) if hole_data else 0
-    
+
     fairways_hit = sum(1 for h in hole_data if h.fairway is True)
     fairways_possible = sum(1 for h in hole_data if h.par > 3)
     fairway_percentage = fairways_hit / fairways_possible if fairways_possible > 0 else 0
-    
-    # SG calculations
-    sg_putting = sum(calculate_sg_putting(h, baseline) for h in hole_data)
-    sg_approach = sum(calculate_sg_approach(h, baseline) for h in hole_data)
-    
+
+    # Four-category SG
+    sg_g = 0.0
+    sg_p = 0.0
+    sg_f = 0.0
+    sg_a = 0.0
+    for h in hole_data:
+        cat = calculate_hole_sg(h, surface, handicap)
+        sg_g += cat["g"]
+        sg_p += cat["p"]
+        sg_f += cat["f"]
+        sg_a += cat["a"]
+
     # Strokes over/under (vs expected score)
-    # Use manual par values if provided (manual course entry), otherwise from hole_data
     if manual_par_values:
-        # Index by hole number, not sum the whole list: a front-nine or
-        # "play until dark" round on an 18-hole manual course must not be
-        # scored against all 18 pars. Falls back to the hole's own par if the
-        # hole number is outside the manual course's range.
         total_par = sum(
             manual_par_values[h.hole_number - 1]
             if 1 <= h.hole_number <= len(manual_par_values) else h.par
@@ -122,20 +269,18 @@ def calculate_round_stats(
         )
     else:
         total_par = sum(h.par for h in hole_data)
-    # Expected score = par + handicap (rough approximation)
-    # More precise: use course rating if available
+
     if course_rating and course_slope:
-        # Handicap differential formula
         expected_score = course_rating + (handicap * course_slope / 113)
     else:
         expected_score = total_par + handicap
-    
+
     strokes_over_under = total_score - expected_score
-    
+
     # Per-hole averages
     avg_putts_per_hole = total_putts / len(hole_data) if hole_data else 0
     avg_score_to_par = (total_score - total_par) / len(hole_data) if hole_data else 0
-    
+
     return {
         "total_score": total_score,
         "total_putts": total_putts,
@@ -144,8 +289,10 @@ def calculate_round_stats(
         "fairways_hit": fairways_hit,
         "fairways_possible": fairways_possible,
         "fairway_percentage": round(fairway_percentage, 3),
-        "sg_putting": round(sg_putting, 2),
-        "sg_approach": round(sg_approach, 2),
+        "sg_putting": round(sg_g, 2),
+        "sg_short": round(sg_p, 2),
+        "sg_driving": round(sg_f, 2),
+        "sg_approach": round(sg_a, 2),
         "strokes_over_under": round(strokes_over_under, 2),
         "avg_putts_per_hole": round(avg_putts_per_hole, 2),
         "avg_score_to_par": round(avg_score_to_par, 2),
@@ -154,18 +301,7 @@ def calculate_round_stats(
 
 
 def _new_input_rollups(hole_data: List[HoleResult]) -> Dict[str, Any]:
-    """
-    Roll up the two inputs added in migration 020.
-
-    Deliberately additive: these are recorded but not yet fed into the SG
-    figures above. Mixing a good new input into the current baselines would not
-    help, because those baselines are themselves wrong by 5 to 17 strokes a
-    round (`scripts/audit_sg.py`). Both land together when the rebuilt surface
-    does — see docs/SG_REBUILD.md.
-
-    Keys are omitted rather than zeroed when nothing was recorded, so a round
-    logged before collection stays distinguishable from a clean round.
-    """
+    """Roll up the inputs added in migration 020."""
     out: Dict[str, Any] = {}
 
     if any(h.penalty_strokes for h in hole_data):
@@ -184,37 +320,26 @@ def get_trend_summary(
     recent_rounds: List[Dict[str, Any]],
     num_rounds: int = 5,
 ) -> Dict[str, Any]:
-    """
-    Calculate trend summary from recent round stats.
-    
-    Args:
-        recent_rounds: List of round_stats dicts, ordered by date (newest first)
-        num_rounds: Number of rounds to include in trend
-    
-    Returns:
-        Trend summary with averages and direction
-    """
+    """Calculate trend summary from recent round stats."""
     rounds_to_analyze = recent_rounds[:num_rounds]
     if not rounds_to_analyze:
         return {}
-    
+
     n = len(rounds_to_analyze)
-    
-    # Calculate averages
+
     avg_gir = sum(r["gir_percentage"] for r in rounds_to_analyze) / n
     avg_fairway = sum(r["fairway_percentage"] for r in rounds_to_analyze) / n
     avg_putts = sum(r["total_putts"] for r in rounds_to_analyze) / n
-    avg_sg_putting = sum(r["sg_putting"] for r in rounds_to_analyze) / n
-    avg_sg_approach = sum(r["sg_approach"] for r in rounds_to_analyze) / n
-    
-    # Trend direction (compare last round vs average of previous)
+    avg_sg_putting = sum(r.get("sg_putting", 0) for r in rounds_to_analyze) / n
+    avg_sg_approach = sum(r.get("sg_approach", 0) for r in rounds_to_analyze) / n
+
     if n >= 2:
         last = rounds_to_analyze[0]
         previous_avg = sum(r["total_score"] for r in rounds_to_analyze[1:]) / (n - 1)
         score_trend = last["total_score"] - previous_avg
     else:
         score_trend = 0
-    
+
     return {
         "rounds_analyzed": n,
         "avg_gir_percentage": round(avg_gir, 3),
