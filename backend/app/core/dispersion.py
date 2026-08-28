@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from typing import Dict, Literal
 
 from app.core.empirical import HandicapAggregates, aggregates_for
+from app.core import published
 
 Lie = Literal["tee", "fairway", "rough", "sand", "recovery", "green"]
 
@@ -98,7 +99,8 @@ class PlayerDispersion:
     sand_penalty: float              # ASSUMED — dispersion multiplier out of sand
     penalty_rate: float              # ASSUMED — per full shot: water, OB, lost ball
     sand_escape_fail_rate: float     # ASSUMED — bunker shots that stay in the bunker
-    short_game_proximity_ft: float   # DERIVED from up_down_pct + putting curve
+    short_game_proximity_ft: float   # MEASURED — published greenside proximity
+    short_game_shape: float          # ASSUMED — Gamma shape of the proximity spread
     putting: "PuttingSkill"          # DERIVED from avg_putts
 
     geometry: CourseGeometry = DEFAULT_GEOMETRY
@@ -183,10 +185,17 @@ def _erfinv(x: float) -> float:
     return p * x
 
 
-#: ASSUMED. A shot from rough scatters wider than the same shot from the
-#: fairway; from sand, wider still. Multipliers on the approach dispersion.
-ROUGH_PENALTY = 1.35
-SAND_PENALTY = 1.60
+#: DERIVED from published proximity by lie (Shot Scope, 60-100 yards: fairway
+#: 40 ft, rough 46 ft, sand 56 ft). Previously ASSUMED at 1.35 / 1.60.
+ROUGH_PENALTY = published.LIE_DISPERSION_MULTIPLIER["rough"]
+SAND_PENALTY = published.LIE_DISPERSION_MULTIPLIER["sand"]
+
+#: ASSUMED. Gamma shape for greenside proximity. Published proximity is a
+#: *mean*, and the spread around it matters more than the mean does: chips
+#: cluster close with a long tail of poor ones, so most finish nearer than the
+#: average. A shape near 1.5 gives that skew. Getting this wrong shows up
+#: immediately in the up-and-down holdout, which is the point.
+SHORT_GAME_SHAPE = 1.5
 
 #: ASSUMED. Typical approach distance used to convert `gir_pct` into approach
 #: dispersion. Reference-course par 4s leave roughly this after a drive.
@@ -197,23 +206,53 @@ NOMINAL_APPROACH_YARDS = 155.0
 DISTANCE_TO_LATERAL_RATIO = 0.72
 
 
-def nominal_penalty_rate(handicap: float) -> float:
+def derived_penalty_rate(handicap: float, agg: HandicapAggregates) -> float:
     """
-    Per-shot probability of a penalty — water, out of bounds, lost ball.
+    Per-shot probability of a penalty, DERIVED from measured penalty strokes.
 
-    ASSUMED starting value, solved properly by `expected_strokes.calibrate`.
-    A pure dispersion model has no left tail: every shot advances the ball with
-    Gaussian error, so nobody ever reloads. Real golf does, increasingly with
-    handicap, and it is worth several strokes a round. Whether the solved value
-    lands at a plausible penalty count is a falsifiable check on the model, not
-    a free parameter to hide error in — `scripts/solve_baselines.py` reports it.
+    Shot Scope publishes penalty strokes per round by handicap (0.56 at scratch
+    rising to 4.67 at 25). Spreading that over the round's non-putting shots
+    gives the per-shot rate the recursion needs.
+
+    This replaces the model's one fitted parameter. With penalties measured
+    rather than solved, `avg_score` goes back to being a holdout — a fit that
+    reproduces scoring without ever being shown it is real evidence.
     """
-    return 0.004 + 0.0011 * max(0.0, min(handicap, 25.0))
+    per_round = published.interpolate(published.PENALTY_STROKES_PER_ROUND, handicap)
+    full_shots = max(1.0, agg.avg_score - agg.avg_putts)
+    return per_round / full_shots
 
 
 def nominal_sand_fail_rate(handicap: float) -> float:
     """ASSUMED. Bunker shots that fail to escape. Rare at scratch, common at 25."""
     return 0.01 + 0.005 * max(0.0, min(handicap, 25.0))
+
+
+def fit_putting_skill(handicap: float) -> "PuttingSkill":
+    """
+    Fit the make-rate curve to published make percentages.
+
+    Shot Scope reports make rate in distance bands by handicap. Least squares on
+    (d50, steepness) against those bands turns the putting model from ASSUMED
+    shape with a solved level into MEASURED throughout — which also frees
+    `avg_putts` to become a holdout instead of the thing putting is fitted to.
+    """
+    from scipy.optimize import least_squares
+
+    observations = published.make_rates_for(handicap)
+
+    def residuals(params):
+        d50, steepness = params
+        skill = PuttingSkill(d50_ft=max(d50, 1.05), steepness=max(steepness, 0.5))
+        return [skill.make_probability(d) - p for d, p in observations]
+
+    solved = least_squares(
+        residuals,
+        x0=[7.0, 2.0],
+        bounds=([1.05, 0.5], [30.0, 6.0]),
+    )
+    d50, steepness = solved.x
+    return PuttingSkill(d50_ft=float(d50), steepness=float(steepness))
 
 
 def dispersion_for(
@@ -251,36 +290,15 @@ def dispersion_for(
         ),
         rough_penalty=ROUGH_PENALTY,
         sand_penalty=SAND_PENALTY,
-        penalty_rate=nominal_penalty_rate(handicap),
+        penalty_rate=derived_penalty_rate(handicap, agg),
         sand_escape_fail_rate=nominal_sand_fail_rate(handicap),
-        short_game_proximity_ft=_nominal_short_game_proximity(agg),
-        putting=PuttingSkill(d50_ft=_nominal_putting_d50(agg)),
+        short_game_proximity_ft=published.interpolate(
+            published.SHORT_GAME_PROXIMITY_FT, handicap
+        ),
+        short_game_shape=SHORT_GAME_SHAPE,
+        putting=fit_putting_skill(handicap),
         geometry=geometry,
     )
-
-
-def _nominal_putting_d50(agg: HandicapAggregates) -> float:
-    """
-    Starting value for the putting solve.
-
-    Scaled off measured putts per round so the optimiser starts near the answer;
-    the real value comes from `expected_strokes.calibrate_putting`.
-    """
-    putts_per_hole = agg.avg_putts / 18.0
-    # More putts per hole means a shorter distance at which half still drop.
-    return max(3.0, 14.0 - 5.0 * (putts_per_hole - 1.70) / 0.10)
-
-
-def _nominal_short_game_proximity(agg: HandicapAggregates) -> float:
-    """
-    Starting value for expected proximity, in feet, after a greenside shot.
-
-    Anchored to `up_down_pct`: getting down in two means holing the putt that
-    follows, so a better scrambler must be finishing closer. Refined against the
-    solved putting curve in `expected_strokes.calibrate_short_game`.
-    """
-    # Inverting a nominal make curve: up-and-down rate maps to a proximity.
-    return max(3.0, 3.0 + 34.0 * (1.0 - agg.up_down_pct) ** 1.6)
 
 
 def summarise(dispersion: PlayerDispersion) -> Dict[str, float]:

@@ -155,6 +155,51 @@ def _skill_for(lie: str, disp: PlayerDispersion) -> ShotSkill:
     return disp.approach
 
 
+def _greenside_values(
+    distances: np.ndarray,
+    lie: str,
+    disp: PlayerDispersion,
+    green: np.ndarray,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """
+    Expected strokes for a shot from just off the green.
+
+    A chip is not a short approach. Modelling it as one — which the recursion did
+    before this existed — gets the up-and-down rate and the first-putt distance
+    after a missed green both wrong, and the putting calibration then distorts to
+    absorb the error.
+
+    Proximity is drawn from a Gamma with the *published mean* and a right skew,
+    which matters: most chips finish nearer than the average while a few finish
+    far, so the average make probability is higher than the make probability at
+    the average distance.
+    """
+    n = len(distances)
+    mult = {"fairway": 1.0, "rough": disp.rough_penalty, "sand": disp.sand_penalty}.get(lie, 1.0)
+
+    # A 30-yard pitch finishes further out than a 5-yard chip.
+    scale = 0.55 + 0.45 * (distances / GREENSIDE_YARDS)
+    mean_ft = disp.short_game_proximity_ft * mult * scale
+
+    shape = disp.short_game_shape
+    prox = rng.gamma(shape, size=(n, SAMPLES)) * (mean_ft / shape)[:, None]
+
+    if lie == "sand":
+        stuck = rng.random((n, SAMPLES)) < disp.sand_escape_fail_rate
+    else:
+        stuck = np.zeros((n, SAMPLES), dtype=bool)
+
+    idx = np.clip(np.round(prox).astype(int), 0, MAX_PUTT_FT - 1)
+    values = green[idx]
+
+    # A failed escape leaves the same shot to play again.
+    if stuck.any():
+        values = np.where(stuck, values + 1.0, values)
+
+    return 1.0 + values.mean(axis=1)
+
+
 def _sweep(
     distances: np.ndarray,
     lie: str,
@@ -247,10 +292,19 @@ def solve_surface(disp: PlayerDispersion, sweeps: int = 40, tol: float = 1e-4) -
 
     rng = np.random.default_rng(SEED)
 
+    greenside = distances <= GREENSIDE_YARDS
+
     for _ in range(sweeps):
         delta = 0.0
         for lie in FULL_LIES:
             updated = _sweep(distances, lie, disp, green, full, rng)
+
+            # Inside the greenside band it is a chip, not a short approach.
+            if lie != "tee":
+                updated[greenside] = _greenside_values(
+                    distances[greenside], lie, disp, green, rng
+                )
+
             updated[0] = 0.0
             delta = max(delta, float(np.max(np.abs(updated - full[lie]))))
             full[lie] = updated
@@ -332,6 +386,25 @@ def _simulate_to_green(
         if not live.any():
             break
 
+        # Anything just off the green gets chipped on, matching the recursion.
+        chip = live & (d <= GREENSIDE_YARDS) & (lie != "tee")
+        if chip.any():
+            idx = np.where(chip)[0]
+            mult = np.array(
+                [
+                    {"fairway": 1.0, "rough": disp.rough_penalty, "sand": disp.sand_penalty}.get(l, 1.0)
+                    for l in lie[idx]
+                ]
+            )
+            scale = 0.55 + 0.45 * (d[idx] / GREENSIDE_YARDS)
+            mean_ft = disp.short_game_proximity_ft * mult * scale
+            shape = disp.short_game_shape
+            first_putt_ft[idx] = rng.gamma(shape, size=idx.shape) * (mean_ft / shape)
+            shots[idx] += 1
+            on_green[idx] = True
+            reached_in_reg[idx] = shots[idx] <= reg_shots
+            live = ~on_green
+
         for l in FULL_LIES:
             sel = live & (lie == l)
             if not sel.any():
@@ -393,65 +466,57 @@ def _simulate_to_green(
 
 
 def calibrate(handicap: float, geometry: CourseGeometry = DEFAULT_GEOMETRY,
-              iterations: int = 14) -> Tuple[Surface, Predicted]:
+              iterations: int = 16) -> Tuple[Surface, Predicted]:
     """
-    Solve the dispersion that reproduces measured putting, GIR and scoring.
+    Solve the one parameter that is not measured.
 
-    Three one-dimensional searches, alternated. Each target is monotone in its
-    parameter, so bisection suffices and there is no optimiser to tune:
+    Putting comes from published make rates, penalties from published penalty
+    counts, greenside proximity from published proximity, tee dispersion from
+    fairway percentage, driving from measured distance. That leaves approach
+    dispersion, which is bisected against `gir_pct` — it cannot be read off
+    directly, because a scratch player and a 25 handicap face entirely different
+    approach distances and only the recursion knows what those are.
 
-        putting d50      against  avg_putts
-        approach lateral against  gir_pct
-        penalty rate     against  avg_score
-
-    `up_down_pct` is deliberately untouched — it is the holdout.
-
-    Fitting the penalty rate to scoring is the one place model error could hide,
-    so it is checked rather than trusted: `implied_penalty_strokes` converts the
-    solved rate into penalty strokes per round, which is a number with a known
-    plausible range. A fit that needs eight penalties a round has not found
-    penalties, it has absorbed a broken model.
+    One fitted parameter, three holdouts: `avg_score`, `avg_putts` and
+    `up_down_pct` are never shown to the solver. Reproducing them is evidence.
     """
     agg = aggregates_for(handicap)
     disp = dispersion_for(handicap, geometry)
 
-    d50_lo, d50_hi = 1.5, 40.0
-    app_lo, app_hi = 0.02, 0.40
-    pen_lo, pen_hi = 0.0, 0.10
-
     ratio = disp.approach.distance / disp.approach.lateral
+    lo, hi = 0.02, 0.40
     surface = solve_surface(disp, sweeps=12)
 
     for _ in range(iterations):
-        # Larger d50 means more putts drop, so fewer putts per round.
-        d50 = 0.5 * (d50_lo + d50_hi)
-        disp = replace(disp, putting=replace(disp.putting, d50_ft=d50))
-        surface = solve_surface(disp, sweeps=10)
-        if predict(surface).avg_putts > agg.avg_putts:
-            d50_lo = d50
-        else:
-            d50_hi = d50
-
-        # Wider approach dispersion means fewer greens hit.
-        lat = 0.5 * (app_lo + app_hi)
+        lat = 0.5 * (lo + hi)
         disp = replace(disp, approach=ShotSkill(lateral=lat, distance=lat * ratio))
-        surface = solve_surface(disp, sweeps=10)
+        surface = solve_surface(disp, sweeps=12)
         if predict(surface).gir_pct > agg.gir_pct:
-            app_lo = lat
+            lo = lat
         else:
-            app_hi = lat
-
-        # More penalties means a higher score.
-        pen = 0.5 * (pen_lo + pen_hi)
-        disp = replace(disp, penalty_rate=pen)
-        surface = solve_surface(disp, sweeps=10)
-        if predict(surface).avg_score > agg.avg_score:
-            pen_hi = pen
-        else:
-            pen_lo = pen
+            hi = lat
 
     surface = solve_surface(disp, sweeps=40)
     return surface, predict(surface)
+
+
+def implied_up_and_down(surface: Surface, samples: int = 20000) -> float:
+    """
+    Up-and-down rate implied by the greenside and putting models.
+
+    Chip on, then hole the putt. Averaged over the proximity distribution rather
+    than evaluated at its mean, which matters here: make probability is convex
+    across the chipping range, so the skew is worth several points of conversion.
+    """
+    disp = surface.dispersion
+    rng = np.random.default_rng(SEED + 2)
+
+    shape = disp.short_game_shape
+    mean_ft = disp.short_game_proximity_ft
+    prox = rng.gamma(shape, size=samples) * (mean_ft / shape)
+
+    makes = np.array([disp.putting.make_probability(float(p)) for p in prox])
+    return float(makes.mean())
 
 
 def implied_penalty_strokes(surface: Surface) -> float:

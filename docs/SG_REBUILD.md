@@ -142,55 +142,79 @@ something.
 It also fixes §1 and §2 structurally: a surface derived from make-rates and
 proximity cannot drift 17 strokes from observed scoring without the fit screaming.
 
-**Status: built, partially working.** `dispersion.py` + `expected_strokes.py`,
-graded by `scripts/solve_baselines.py`. Fit on `avg_putts`, `gir_pct` and
-`avg_score`; `up_down_pct` held out.
+**Status: built, on published data, one parameter fitted.**
+`dispersion.py` + `expected_strokes.py` + `published.py`, graded by
+`scripts/solve_baselines.py`.
 
-The headline error is largely fixed:
+Everything except approach dispersion is now read from published Shot Scope
+data: putting make rate by distance and handicap, greenside proximity, penalty
+strokes per round, and lie-dispersion multipliers derived from proximity by lie.
+Approach dispersion is the one fitted parameter, bisected against `gir_pct`,
+because it cannot be read off — a scratch player and a 25 handicap face
+completely different approach distances and only the recursion knows what those
+are.
 
-| handicap | committed error | solved error | improvement |
+That leaves three holdouts: `avg_score`, `avg_putts`, `up_down_pct`.
+
+| holdout | RMSE | bias |
+|---|---:|---:|
+| up and down | 0.041 | −0.024 |
+| putts | 5.13 | −4.95 |
+| score | 6.02 | −5.41 |
+
+**Up-and-down is essentially solved** — RMSE 0.041, down from 0.283 before the
+greenside model existed. Modelling a chip as a chip rather than a short approach,
+with a right-skewed proximity distribution around the published mean, reproduces
+conversion rates it was never shown. The skew is what does it: make probability
+is convex across the chipping range, so most chips finishing nearer than the
+average is worth several points of conversion.
+
+**Putts and score are both short, and by nearly the same amount** — bias −4.95
+and −5.41. That near-equality is the finding: essentially the whole remaining
+scoring error *is* the putting shortfall. Every putt the model does not take is a
+stroke it does not count. The long game is close to right.
+
+The cause is first-putt distance. Check 4 of the grader inverts the published
+make rates: to produce measured putts per round they need an average first putt
+of 13 ft at scratch rising to 26 ft at 25 handicap, which sits 2-5 ft beyond
+published chip proximity and tracks it closely — exactly as it should, since not
+every green is reached by a chip. The two published sources are coherent with
+each other. The model is finishing balls too close.
+
+The likely culprit is that GIR only requires being *on* the green, while the
+model's on-green distribution clusters too near the pin: approach dispersion is
+bisected until the right fraction of shots finish inside the green radius, with
+nothing constraining where inside it they land.
+
+**Honest note on the previous commit.** It reported a 10.3x scoring improvement
+at 25 handicap. That was with the penalty rate as a free parameter fitted to
+scoring, and the plausibility check flagged it at the time — 5.9 penalties a
+round, past the plausible ceiling. With penalties read from published data
+(4.67 at 25 handicap) the honest figure is 1.8x. The earlier number was bought,
+which is what the check was built to catch.
+
+Against the committed tables, on scoring, with nothing fitted to scoring:
+
+| handicap | committed | solved | improvement |
 |---:|---:|---:|---:|
-| 0 | −4.85 | −1.60 | 3.0× |
-| 15 | −12.89 | −2.31 | 5.6× |
-| 25 | −17.07 | −1.65 | 10.3× |
+| 0 | −4.85 | −1.68 | 2.9× |
+| 15 | −12.89 | −5.50 | 2.3× |
+| 25 | −17.07 | −9.27 | 1.8× |
 
-Three defects remain, and they share one cause:
+**Next:** constrain the on-green landing distribution, not just the on-green
+rate. Published approach proximity by distance band and handicap is the input
+that would do it — Shot Scope publishes it, but as images rather than text, so it
+needs transcribing by hand or sourcing elsewhere.
 
-1. **Solved putting `d50` collapses** — 6.3 ft at scratch, but 3.4 ft at 15 and
-   2.9 ft at 25, meaning half of all putts missed from under a yard. No golfer
-   putts like that.
-2. **The up-and-down holdout fails badly** — RMSE 0.283, bias −0.276, predicting
-   0.139 against 0.500 observed at scratch.
-3. **Penalties absorb error at high handicaps** — 5.5 and 5.9 strokes a round at
-   20 and 25, above the plausible ceiling. The scoring match at those brackets is
-   bought, not earned.
+**Sources.** All in `published.py` with per-table citations:
 
-The common cause is that **there is no short-game model**. The recursion treats a
-greenside shot as an ordinary approach with approach dispersion. A chip from 20
-yards is a different skill, and it is what sets both the up-and-down rate and the
-first-putt distance after a missed green. Get it wrong and first-putt distances
-are wrong, so the putting calibration distorts to compensate — which is exactly
-the pattern in defects 1 and 2. The plausibility checks were built to catch this
-kind of compensation and they caught it.
+- [Putting make percentage by handicap](https://shotscope.com/blog/practice-green/stats-and-data/putting-make-percentages-by-handicap-how-do-you-compare/)
+- [Approach proximity by lie](https://shotscope.com/blog/practice-green/stats-and-data/approach-shots-average-proximity/)
+- [Law of Averages, per handicap](https://shotscope.com/blog/practice-green/game-improvement/reduce-hcp-law-of-averages-0hcp/)
 
-**Next:** a greenside model — proximity from 5–50 yards by lie — then re-solve.
-This should fix all three at once, and `up_down_pct` moves from holdout to fit
-target, with `fairway_pct` freed to become the new holdout.
-
-**Needs, in priority order.** Published amateur data, most valuable first:
-
-1. **Greenside proximity by distance and lie** (5/10/20/30/50 yards, from
-   fairway, rough, sand) — the missing model above.
-2. **Putting make rate by distance and handicap** (3/5/8/10/15/20/30/40 ft) —
-   replaces the assumed log-logistic outright and stops `d50` absorbing error.
-   Shot Scope and Broadie both publish these.
-3. **Approach proximity by distance and lie** — would let approach dispersion be
-   read off rather than bisected against GIR.
-4. **Penalty strokes per round by handicap** — turns the one fitted fudge
-   parameter into a measured input, restoring `avg_score` as a clean holdout.
-
-Do not transcribe these from memory. Every number that lands should carry its
-source in `dispersion.py`, and its tag moves from ASSUMED to MEASURED.
+Where Shot Scope and Break X disagree — GIR, fairways, driving distance, and
+up-and-down most of all — both are recorded in `published.py` rather than
+averaged, and the grader reports against both.
 
 ### Phase 2 — One SG primitive, with units in the type system
 
@@ -281,6 +305,7 @@ candidate. The first behaviour change should be a deliberate, separate merge.
 | `backend/scripts/audit_sg.py` | The diagnosis, as 8 runnable checks. Exits non-zero; ready to join the smoke test once green. |
 | `backend/app/core/baseline_fit.py` | The rescaling candidate and its recorded failure. |
 | `backend/scripts/fit_baselines.py` | Fit, holdout, and sensitivity report. |
+| `backend/app/core/published.py` | Published shot-level data (Shot Scope), with per-table sources and recorded disagreements. |
 | `backend/app/core/dispersion.py` | Physical shot-dispersion parameters, each tagged MEASURED / DERIVED / ASSUMED. |
 | `backend/app/core/expected_strokes.py` | The surface, solved from dispersion by value iteration. |
 | `backend/scripts/solve_baselines.py` | Solves and grades it: fit, plausibility, holdout, sensitivity. |
