@@ -251,6 +251,35 @@ def ingest_round(payload: RoundPayload):
 
     shots_with_sg = sum(1 for r in embeddings_rows if r.get("sg_value") is not None)
 
+    # Persist the raw per-hole entries.
+    #
+    # These used to be consumed for stats and thrown away, which meant no round
+    # could ever be recomputed — every model improvement applied only to future
+    # rounds while history stayed wrong. Storing them is what makes the
+    # strokes-gained rebuild retroactive. Failure here must not lose the round.
+    holes_stored = 0
+    if payload.hole_data:
+        try:
+            supabase.table("hole_scores").insert([
+                {
+                    "round_id": round_id,
+                    "user_id": payload.user_id,
+                    "hole_number": h.hole_number,
+                    "par": h.par,
+                    "yardage": h.yardage,
+                    "score": h.score,
+                    "putts": h.putts,
+                    "fairway": h.fairway,
+                    "gir": h.gir,
+                    "first_putt": h.first_putt,
+                    "penalty_strokes": h.penalty_strokes,
+                }
+                for h in payload.hole_data
+            ]).execute()
+            holes_stored = len(payload.hole_data)
+        except Exception as e:
+            print(f"Warning: Failed to store hole scores: {e}")
+
     # Calculate scorecard stats if hole_data provided
     round_stats = None
     if payload.hole_data:
@@ -284,6 +313,7 @@ def ingest_round(payload: RoundPayload):
         "shots_with_sg": shots_with_sg,
         "handicap_index": payload.handicap_index,
         "reflection_saved": payload.reflection is not None,
+        "holes_stored": holes_stored,
         "status": "success",
     }
     if round_stats:

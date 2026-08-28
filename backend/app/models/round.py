@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 
 
 # ── Code mappings ──
@@ -118,6 +118,16 @@ class ShotModel(BaseModel):
         return CLUB_CODES.get(self.club, self.club)
 
 
+#: Representative distance in feet for each first-putt bucket. Used to turn a
+#: tapped button into a number the strokes-gained model can work with.
+FIRST_PUTT_FEET: dict[str, float] = {
+    "tap_in": 2.0,   # inside 3 ft
+    "short": 6.0,    # 3-10 ft
+    "mid": 16.0,     # 10-25 ft
+    "long": 35.0,    # 25 ft and out
+}
+
+
 class HoleResult(BaseModel):
     """Per-hole scorecard entry for simple round logging."""
     hole_number: int = Field(..., ge=1, le=18)
@@ -127,6 +137,25 @@ class HoleResult(BaseModel):
     putts: int = Field(default=2, ge=0, le=10)
     fairway: Optional[bool] = None  # True = hit, False = missed, None = par 3
     gir: Optional[bool] = None      # Green in regulation
+    first_putt: Optional[Literal["tap_in", "short", "mid", "long"]] = Field(
+        None,
+        description=(
+            "How long the first putt was. Putt count alone is ambiguous — two "
+            "putts from 40 feet is good play, two from 4 feet is not — so "
+            "without this, putting and approach quality cannot be separated."
+        ),
+    )
+    penalty_strokes: int = Field(
+        default=0,
+        ge=0,
+        le=9,
+        description="Penalty strokes on this hole (water, OB, lost ball). Already included in `score`.",
+    )
+
+    @property
+    def first_putt_ft(self) -> Optional[float]:
+        """Representative first-putt distance in feet, or None if not recorded."""
+        return FIRST_PUTT_FEET.get(self.first_putt) if self.first_putt else None
 
 
 class TeeBox(BaseModel):

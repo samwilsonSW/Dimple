@@ -149,7 +149,35 @@ def calculate_round_stats(
         "strokes_over_under": round(strokes_over_under, 2),
         "avg_putts_per_hole": round(avg_putts_per_hole, 2),
         "avg_score_to_par": round(avg_score_to_par, 2),
+        **_new_input_rollups(hole_data),
     }
+
+
+def _new_input_rollups(hole_data: List[HoleResult]) -> Dict[str, Any]:
+    """
+    Roll up the two inputs added in migration 020.
+
+    Deliberately additive: these are recorded but not yet fed into the SG
+    figures above. Mixing a good new input into the current baselines would not
+    help, because those baselines are themselves wrong by 5 to 17 strokes a
+    round (`scripts/audit_sg.py`). Both land together when the rebuilt surface
+    does — see docs/SG_REBUILD.md.
+
+    Keys are omitted rather than zeroed when nothing was recorded, so a round
+    logged before collection stays distinguishable from a clean round.
+    """
+    out: Dict[str, Any] = {}
+
+    if any(h.penalty_strokes for h in hole_data):
+        out["total_penalty_strokes"] = sum(h.penalty_strokes for h in hole_data)
+    elif hole_data:
+        out["total_penalty_strokes"] = 0
+
+    recorded = [h.first_putt_ft for h in hole_data if h.first_putt_ft is not None]
+    if recorded:
+        out["avg_first_putt_ft"] = round(sum(recorded) / len(recorded), 1)
+
+    return out
 
 
 def get_trend_summary(
