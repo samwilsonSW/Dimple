@@ -306,9 +306,19 @@ struct ScorecardEntryView: View {
                 VStack(spacing: 0) {
                     topZone(h)
                     Divider()
-                    middleZone(h)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.horizontal)
+                    // Scrolls only when it has to. `minHeight` keeps the
+                    // Spacers inside doing their job on a roomy screen, so the
+                    // fields stay spread out rather than bunching at the top;
+                    // on a small phone with five fields it becomes scrollable
+                    // instead of clipping.
+                    GeometryReader { proxy in
+                        ScrollView {
+                            middleZone(h)
+                                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                                .padding(.horizontal)
+                        }
+                        .scrollBounceBehavior(.basedOnSize)
+                    }
                 }
                 .safeAreaInset(edge: .bottom) { bottomZone(h) }
             }
