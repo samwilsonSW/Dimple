@@ -620,16 +620,19 @@ def coach_chat(request: CoachChatRequest):
             pass
     else:
         # Create new conversation
-        try:
-            title = "Coach Chat"
-            if request.round_id:
-                # Get round info for title
+        title = "Coach Chat"
+        if request.round_id:
+            # Get round info for title — non-fatal if this fails
+            try:
                 round_result = supabase.table("rounds").select("course, round_date").eq("id", request.round_id).single().execute()
                 if round_result.data:
                     course_name = round_result.data.get("course", {}).get("name", "Unknown Course")
                     round_date = round_result.data.get("round_date", "")
                     title = f"Round at {course_name} — {round_date}"
-            
+            except Exception as e:
+                logger.warning(f"Round lookup failed for round_id={request.round_id}: {e}. Using default title.")
+        
+        try:
             conv_result = supabase.table("conversations").insert({
                 "user_id": request.user_id,
                 "round_id": request.round_id,
@@ -637,7 +640,24 @@ def coach_chat(request: CoachChatRequest):
             }).execute()
             conversation_id = conv_result.data[0]["id"]
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
+            # If the round_id FK constraint fails, retry with round_id=NULL
+            # so the user can still chat even if the round was deleted.
+            if request.round_id and "23503" in str(e):
+                logger.warning(
+                    f"FK violation on conversations.round_id={request.round_id}: {e}. "
+                    f"Retrying with round_id=NULL."
+                )
+                try:
+                    conv_result = supabase.table("conversations").insert({
+                        "user_id": request.user_id,
+                        "round_id": None,
+                        "title": title,
+                    }).execute()
+                    conversation_id = conv_result.data[0]["id"]
+                except Exception as e2:
+                    raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e2)}")
+            else:
+                raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
     
     # 2) Fetch conversation history (last 6 messages)
     conversation_history = []
