@@ -11,7 +11,8 @@ ENV_FILE = BACKEND_DIR / ".env"
 class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
-    moonshot_api_key: str
+    moonshot_api_key: str = ""  # Deprecated — kept for backward compat
+    opencode_api_key: str = ""  # OpenCode Go API key (preferred LLM provider)
     golfcourseapi_key: str = ""  # Optional - course search works without it
     environment: str = "development"
 
