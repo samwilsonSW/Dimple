@@ -65,6 +65,10 @@ CREATE POLICY "Service role can access all hole scores"
     ON hole_scores FOR ALL TO service_role
     USING (true);
 
+-- Supabase requires explicit GRANTs even with RLS policies.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.hole_scores TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE hole_scores_id_seq TO service_role;
+
 -- ── Round-level rollups ──────────────────────────────────────────────────────
 -- Nullable rather than defaulted to 0: a round logged before this migration has
 -- no penalty data, and that is different from a round with zero penalties.

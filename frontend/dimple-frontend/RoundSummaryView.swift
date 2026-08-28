@@ -82,6 +82,8 @@ struct RoundSummaryView: View {
             statCard("GIR", percent(s.gir_percentage), accent: .sageGreen)
             statCard("Fairways", fairwayText(s), accent: .sageGreen)
             statCard("SG Putting", sg(s.sg_putting), accent: sgColor(s.sg_putting))
+            statCard("SG Short", sg(s.sg_short), accent: sgColor(s.sg_short))
+            statCard("SG Driving", sg(s.sg_driving), accent: sgColor(s.sg_driving))
             statCard("SG Approach", sg(s.sg_approach), accent: sgColor(s.sg_approach))
             if let p = s.total_putts { statCard("Putts", "\(p)") }
             if let a = s.avg_putts_per_hole { statCard("Putts / Hole", String(format: "%.1f", a)) }

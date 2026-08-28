@@ -382,7 +382,8 @@ def fetch_round_stats_summary(supabase, user_id: str, limit: int = 3) -> str:
         lines.append(
             f"Round {i}: Score {s['total_score']}, GIR {s['gir_percentage']:.0%}, "
             f"Fairway {s['fairway_percentage']:.0%}, Putts {s['total_putts']}, "
-            f"SG Putting {s['sg_putting']:+.1f}, SG Approach {s['sg_approach']:+.1f}"
+            f"SG Putting {s['sg_putting']:+.1f}, SG Short {s.get('sg_short', 0):+.1f}, "
+            f"SG Driving {s.get('sg_driving', 0):+.1f}, SG Approach {s['sg_approach']:+.1f}"
         )
     return "\n".join(lines)
 

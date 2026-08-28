@@ -216,8 +216,8 @@ struct RoundCardView: View {
     private var sgChips: some View {
         HStack(spacing: 8) {
             SGChip(letter: "G", value: round.stats?.sg_putting, category: .blue)    // putting
-            SGChip(letter: "P", value: nil, category: .orange)                       // short game (TBD)
-            SGChip(letter: "F", value: nil, category: .sageGreen)                     // driving (TBD)
+            SGChip(letter: "P", value: round.stats?.sg_short, category: .orange)       // short game
+            SGChip(letter: "F", value: round.stats?.sg_driving, category: .sageGreen)   // driving
             SGChip(letter: "A", value: round.stats?.sg_approach, category: .purple)   // approach
         }
     }
@@ -279,6 +279,8 @@ struct RoundDetailView: View {
                         statCard("GIR", percent(s.gir_percentage))
                         statCard("Fairways", fairways(s))
                         statCard("SG Putting", sg(s.sg_putting))
+                        statCard("SG Short", sg(s.sg_short))
+                        statCard("SG Driving", sg(s.sg_driving))
                         statCard("SG Approach", sg(s.sg_approach))
                         if let p = s.total_putts { statCard("Putts", "\(p)") }
                         if let a = s.avg_putts_per_hole { statCard("Putts / Hole", String(format: "%.1f", a)) }
