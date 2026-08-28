@@ -552,7 +552,7 @@
   "info": {
     "description": "Golf Intelligence Backend \u2014 Local Embeddings + Moonshot LLM",
     "title": "Dimple API",
-    "version": "0.7.1"
+    "version": "1.0.0"
   },
   "openapi": "3.1.0",
   "paths": {
