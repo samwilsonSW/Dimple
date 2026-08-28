@@ -6,7 +6,7 @@
 
 ## Version
 
-`1.0.0` — matches `backend/app/main.py`
+`1.1.0` — matches `backend/app/main.py`
 
 ---
 
@@ -293,7 +293,7 @@ seam — this table is the reason it exists.
 | 2026-07-14 | 0.7.0 | Replaced `/coach/ask` with `/coach/chat`. Added `/coach/conversations` and `/{id}/messages`. Removed the 25+ handicap gate. Data-source-aware prompts. |
 | 2026-08-06 | 0.7.1 | Added `manual_course` to `POST /rounds` (migration 019). Mutually exclusive with `course_id`; rejects `shots`. |
 | 2026-08-21 | 0.7.1 | Fix: `manual_course` stats summed all par values regardless of holes played, so partial rounds reported a wrong `strokes_over_under`. Now matched by `hole_number`. |
-| 2026-08-27 | 0.8.0 | Added `first_putt` and `penalty_strokes` to `hole_data`, and the `hole_scores` table (migration 020). Per-hole data is now persisted rather than discarded, so rounds can be recomputed. `round_stats` gains `total_penalty_strokes` and `avg_first_putt_ft`. Both new fields are recorded but not yet used in the SG figures — see `docs/SG_REBUILD.md`. |
+| 2026-08-28 | 1.1.0 | Added `first_putt` and `penalty_strokes` to `hole_data`, and the `hole_scores` table (migration 020). Per-hole data is now persisted rather than discarded, so rounds can be recomputed. `round_stats` gains `total_penalty_strokes` and `avg_first_putt_ft`. Both new fields are recorded but not yet used in the SG figures — see `docs/SG_REBUILD.md`. |
 
 `0.7.2` is proposed on `feature/coach-context-memory` (conversation summary,
 migration 020) and is **not** merged — see PR #16.
