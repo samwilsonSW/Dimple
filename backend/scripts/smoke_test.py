@@ -89,6 +89,57 @@ def tier_offline() -> None:
             "" if out.read_text() == rendered else "stale — run scripts/export_openapi.py",
         )
 
+    # ── coach wire format ────────────────────────────────────────────────────
+    # Pure logic, no credentials, no network — so it belongs in the gate. The
+    # format replaced JSON precisely so a bad reply degrades instead of dying;
+    # these check that it actually does.
+    from app.services.coach_format import CoachStreamParser, collect, parse
+
+    sample = (
+        "Off the tee is the leak.\n\n"
+        "@insight Driver dispersion is 2x your 3-wood\n\n"
+        "@drill Gate Drill\n@focus Face control\n"
+        "@step Place two tees just wider than the head\n"
+        "@step Ten swings without clipping either\n"
+        "@win Ten clean in a row\n"
+    )
+    whole = parse(sample)
+    check("coach format: prose separated from tags", whole.answer == "Off the tee is the leak.")
+    check("coach format: insight parsed", whole.key_insights == ["Driver dispersion is 2x your 3-wood"])
+    check("coach format: drill parsed", len(whole.drills) == 1 and whole.drills[0].drill_name == "Gate Drill")
+    check("coach format: steps kept in order", whole.drills[0].steps == [
+        "Place two tees just wider than the head",
+        "Ten swings without clipping either",
+    ])
+    check("coach format: priority is order of appearance", whole.drills[0].priority == 1)
+
+    # Chunk boundaries fall anywhere in a real stream, including mid-tag.
+    consistent = True
+    for size in (1, 2, 3, 5, 7, 11, 29, 97):
+        parser = CoachStreamParser()
+        pieces = []
+        for i in range(0, len(sample), size):
+            pieces.extend(parser.feed(sample[i:i + size]))
+        streamed = collect(iter(pieces), parser)
+        if (streamed.answer, streamed.key_insights) != (whole.answer, whole.key_insights):
+            consistent = False
+            break
+        if [d.steps for d in streamed.drills] != [d.steps for d in whole.drills]:
+            consistent = False
+            break
+    check("coach format: chunk boundaries don't change the result", consistent)
+
+    truncated = parse("Advice here.\n\n@drill Gate Drill\n@focus Face con")
+    check(
+        "coach format: a truncated reply still yields what arrived",
+        truncated.answer == "Advice here." and truncated.drills and truncated.drills[0].drill_name == "Gate Drill",
+    )
+    stray = parse("Advice.\n@sidenote unknown tag\n@insight Kept\n")
+    check(
+        "coach format: an unknown tag degrades to prose, not a lost reply",
+        stray.key_insights == ["Kept"] and "@sidenote" in stray.answer,
+    )
+
     from pydantic import ValidationError
 
     from app.models.round import ManualCourse, RoundPayload
