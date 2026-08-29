@@ -93,37 +93,45 @@
       "DrillRecommendation": {
         "properties": {
           "drill_name": {
+            "default": "",
             "description": "Name of the drill",
             "title": "Drill Name",
             "type": "string"
           },
           "expected_outcome": {
+            "default": "",
             "description": "What success looks like",
             "title": "Expected Outcome",
             "type": "string"
           },
           "focus_area": {
+            "default": "",
             "description": "e.g. '6-iron push', 'lag putting'",
             "title": "Focus Area",
             "type": "string"
           },
           "instructions": {
-            "description": "Step-by-step drill instructions",
+            "default": "",
+            "description": "`steps` joined into one string, for older clients",
             "title": "Instructions",
             "type": "string"
           },
           "priority": {
-            "description": "Priority order: 1 = highest",
+            "description": "Priority order: 1 = highest (order of appearance)",
             "title": "Priority",
             "type": "integer"
+          },
+          "steps": {
+            "description": "Drill steps, in order",
+            "items": {
+              "type": "string"
+            },
+            "title": "Steps",
+            "type": "array"
           }
         },
         "required": [
-          "priority",
-          "focus_area",
-          "drill_name",
-          "instructions",
-          "expected_outcome"
+          "priority"
         ],
         "title": "DrillRecommendation",
         "type": "object"
@@ -578,13 +586,13 @@
   "info": {
     "description": "Golf Intelligence Backend \u2014 Local Embeddings + Moonshot LLM",
     "title": "Dimple API",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
     "/api/v1/coach/chat": {
       "post": {
-        "description": "Conversational AI Coach:\n1. Build data inventory (what data exists for this player)\n2. Fetch conditional data (round stats, trends, shots, reflections)\n3. Build adaptive prompt based on inventory\n4. Call Moonshot LLM to generate coaching response\n5. Save conversation and messages to database",
+        "description": "Conversational AI Coach (buffered).\n\nSame contract as always. Internally it now runs the streaming generator to\ncompletion and parses the line-tagged format, so there is one code path and\none output format shared with `/coach/chat/stream`.\n\nNew clients should prefer the streaming endpoint: this one cannot answer\nbefore the model has finished, which for a long reply exceeds the 100s\nCloudflare allows the origin and comes back to the app as a 524.",
         "operationId": "coach_chat_api_v1_coach_chat_post",
         "requestBody": {
           "content": {
@@ -619,6 +627,43 @@
           }
         },
         "summary": "Coach Chat"
+      }
+    },
+    "/api/v1/coach/chat/stream": {
+      "post": {
+        "description": "Conversational AI Coach (streaming, Server-Sent Events).\n\nEvents, in order:\n  `meta`    {conversation_id, confidence}  \u2014 as soon as the conversation exists\n  `delta`   {text}                         \u2014 prose to append, many of these\n  `insight` {text}                         \u2014 one completed @insight\n  `drill`   {index, priority, drill_name, focus_area, steps, instructions,\n             expected_outcome}             \u2014 re-sent as fields arrive; upsert on `index`\n  `done`    {answer}                       \u2014 the full prose, already saved\n  `error`   {detail}                       \u2014 terminal; nothing follows\n\nThe first bytes go out before any database work, which is what keeps\nCloudflare from timing the request out at 100s.",
+        "operationId": "coach_chat_stream_api_v1_coach_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Coach Chat Stream"
       }
     },
     "/api/v1/coach/conversations": {

@@ -6,7 +6,7 @@ Tiers, cheapest first — each flag adds to the previous:
     python scripts/smoke_test.py                  # offline. no creds, no server, no writes
     python scripts/smoke_test.py --live           # read-only calls against a running API
     python scripts/smoke_test.py --live --write   # also creates a round (writes to Supabase)
-    python scripts/smoke_test.py --live --coach   # also asks the coach (spends LLM money)
+    python scripts/smoke_test.py --live --coach   # also asks the coach, buffered + streaming (spends LLM money)
 
 The default tier needs only fastapi + pydantic + pydantic-settings and makes no
 network calls. It is the tier an agent with no credentials can always run.
@@ -88,6 +88,57 @@ def tier_offline() -> None:
             out.read_text() == rendered,
             "" if out.read_text() == rendered else "stale — run scripts/export_openapi.py",
         )
+
+    # ── coach wire format ────────────────────────────────────────────────────
+    # Pure logic, no credentials, no network — so it belongs in the gate. The
+    # format replaced JSON precisely so a bad reply degrades instead of dying;
+    # these check that it actually does.
+    from app.services.coach_format import CoachStreamParser, collect, parse
+
+    sample = (
+        "Off the tee is the leak.\n\n"
+        "@insight Driver dispersion is 2x your 3-wood\n\n"
+        "@drill Gate Drill\n@focus Face control\n"
+        "@step Place two tees just wider than the head\n"
+        "@step Ten swings without clipping either\n"
+        "@win Ten clean in a row\n"
+    )
+    whole = parse(sample)
+    check("coach format: prose separated from tags", whole.answer == "Off the tee is the leak.")
+    check("coach format: insight parsed", whole.key_insights == ["Driver dispersion is 2x your 3-wood"])
+    check("coach format: drill parsed", len(whole.drills) == 1 and whole.drills[0].drill_name == "Gate Drill")
+    check("coach format: steps kept in order", whole.drills[0].steps == [
+        "Place two tees just wider than the head",
+        "Ten swings without clipping either",
+    ])
+    check("coach format: priority is order of appearance", whole.drills[0].priority == 1)
+
+    # Chunk boundaries fall anywhere in a real stream, including mid-tag.
+    consistent = True
+    for size in (1, 2, 3, 5, 7, 11, 29, 97):
+        parser = CoachStreamParser()
+        pieces = []
+        for i in range(0, len(sample), size):
+            pieces.extend(parser.feed(sample[i:i + size]))
+        streamed = collect(iter(pieces), parser)
+        if (streamed.answer, streamed.key_insights) != (whole.answer, whole.key_insights):
+            consistent = False
+            break
+        if [d.steps for d in streamed.drills] != [d.steps for d in whole.drills]:
+            consistent = False
+            break
+    check("coach format: chunk boundaries don't change the result", consistent)
+
+    truncated = parse("Advice here.\n\n@drill Gate Drill\n@focus Face con")
+    check(
+        "coach format: a truncated reply still yields what arrived",
+        truncated.answer == "Advice here." and truncated.drills and truncated.drills[0].drill_name == "Gate Drill",
+    )
+    stray = parse("Advice.\n@sidenote unknown tag\n@insight Kept\n")
+    check(
+        "coach format: an unknown tag degrades to prose, not a lost reply",
+        stray.key_insights == ["Kept"] and "@sidenote" in stray.answer,
+    )
 
     from pydantic import ValidationError
 
@@ -214,9 +265,73 @@ def tier_coach(url: str, user_id: str) -> None:
         check(f"response has {field}", field in body)
 
     print(f"\n  latency: {elapsed:.1f}s")
-    if elapsed > 60:
-        print("  NOTE: over 60s. Coach latency is a known UX problem — see docs/API_CONTRACT.md.")
-        print("        Adding round-trips here is a taste decision, not an implementation detail.")
+    if elapsed > 90:
+        print("  NOTE: over 90s. Cloudflare gives the origin 100s to start responding, so")
+        print("        the buffered endpoint is close to returning 524. Clients should use")
+        print("        /api/v1/coach/chat/stream — see docs/API_CONTRACT.md.")
+
+
+def tier_coach_stream(url: str, user_id: str) -> None:
+    section("coach streaming — the path that survives a slow answer")
+
+    body = json.dumps({"user_id": user_id, "message": "What should I work on?"}).encode()
+    req = urllib.request.Request(
+        f"{url}/api/v1/coach/chat/stream", data=body, method="POST",
+        headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+    )
+
+    started = time.time()
+    first_byte = first_delta = None
+    events: dict[str, int] = {}
+    answer = ""
+    drills: dict[int, dict] = {}
+    name = None
+
+    try:
+        with urllib.request.urlopen(req, timeout=300) as response:
+            check("POST /coach/chat/stream → 200", response.status == 200, f"status {response.status}")
+            ctype = response.headers.get("Content-Type", "")
+            check("content-type is text/event-stream", ctype.startswith("text/event-stream"), ctype)
+            for raw in response:
+                if first_byte is None:
+                    first_byte = time.time() - started
+                line = raw.decode("utf-8").rstrip("\n")
+                if line.startswith(":"):
+                    events["heartbeat"] = events.get("heartbeat", 0) + 1
+                elif line.startswith("event: "):
+                    name = line[7:]
+                elif line.startswith("data: ") and name:
+                    events[name] = events.get(name, 0) + 1
+                    payload = json.loads(line[6:])
+                    if name == "delta":
+                        if first_delta is None:
+                            first_delta = time.time() - started
+                        answer += payload["text"]
+                    elif name == "drill":
+                        drills[payload["index"]] = payload
+                    elif name == "done":
+                        answer = payload["answer"]
+                    elif name == "error":
+                        check("no error event", False, payload.get("detail", ""))
+    except Exception as exc:  # noqa: BLE001
+        check("streaming request completed", False, str(exc))
+        return
+
+    elapsed = time.time() - started
+    check("received a meta event", events.get("meta", 0) == 1, f"got {events.get('meta', 0)}")
+    check("received prose deltas", events.get("delta", 0) > 0, f"got {events.get('delta', 0)}")
+    check("received a done event", events.get("done", 0) == 1, f"got {events.get('done', 0)}")
+    check("answer is non-empty", bool(answer.strip()))
+    check("no tag leaked into prose", "@insight" not in answer and "@drill" not in answer)
+    for drill in drills.values():
+        check(f"drill {drill['priority']} has a name", bool(drill["drill_name"]))
+
+    print(f"\n  first byte:  {first_byte:.1f}s   <- Cloudflare's 100s clock stops here")
+    print(f"  first word:  {first_delta:.1f}s" if first_delta else "  first word:  never")
+    print(f"  complete:    {elapsed:.1f}s")
+    print(f"  events: {events}")
+    if first_byte and first_byte > 90:
+        check("first byte within Cloudflare's 100s budget", False, f"{first_byte:.1f}s")
 
 
 def main() -> int:
@@ -245,6 +360,7 @@ def main() -> int:
                 tier_write(args.url, args.user_id)
             if args.coach:
                 tier_coach(args.url, args.user_id)
+                tier_coach_stream(args.url, args.user_id)
     else:
         print("\n  offline tier only. add --live to exercise a running server.")
 

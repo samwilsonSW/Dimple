@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-Test Moonshot LLM directly — bypass Supabase to verify response generation works.
-This tests the core issue: empty LLM responses.
+Test the LLM directly — bypass Supabase to verify response generation works.
+Streams the reply and parses the line-tagged coach format (see coach_format.py).
 """
 import sys
+import time
 from pathlib import Path
 
 # Add backend to path
 backend_dir = Path(__file__).parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
-from app.services.llm import generate_structured_coach_response
+from app.services.llm import stream_coach_response
+from app.services.coach_format import CoachStreamParser, collect
 
 SYSTEM_PROMPT = (
     "You are Dimple Coach, an expert golf coach. You have access to the player's "
@@ -33,7 +35,7 @@ QUESTIONS = [
 
 
 def test_llm_direct():
-    print("Testing Moonshot LLM directly (no Supabase)...")
+    print("Testing LLM streaming + tag parsing directly (no Supabase)...")
     print("=" * 60)
 
     for i, question in enumerate(QUESTIONS, 1):
@@ -46,12 +48,26 @@ def test_llm_direct():
         )
 
         try:
-            response = generate_structured_coach_response(SYSTEM_PROMPT, user_prompt)
-            print(f"✅ SUCCESS")
-            print(f"   Answer: {response.get('answer', '')[:150]}...")
-            print(f"   Confidence: {response.get('confidence', '?')}/5")
-            print(f"   Insights: {len(response.get('key_insights', []))}")
-            print(f"   Drills: {len(response.get('drill_recommendations', []))}")
+            parser = CoachStreamParser()
+            first_token = None
+            start = time.time()
+
+            def events():
+                nonlocal first_token
+                for chunk in stream_coach_response(SYSTEM_PROMPT, user_prompt):
+                    if first_token is None:
+                        first_token = time.time() - start
+                    yield from parser.feed(chunk)
+
+            result = collect(events(), parser)
+            print(f"✅ SUCCESS  (first token {first_token:.1f}s, complete {time.time() - start:.1f}s)")
+            print(f"   Answer: {result.answer[:150]}...")
+            print(f"   Insights: {len(result.key_insights)}")
+            print(f"   Drills: {len(result.drills)}")
+            for d in result.drills:
+                print(f"     {d.priority}. {d.drill_name} ({d.focus_area}) — {len(d.steps)} steps")
+            if "@" in result.answer:
+                print("   ⚠️  a tag leaked into the prose — check the format instructions")
         except Exception as e:
             print(f"❌ FAILED: {e}")
 

@@ -9,18 +9,21 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+# These are Python build artefacts, so anchor them to the repo root. Unanchored
+# they match at any depth — `lib/` silently swallowed `mobile/src/lib/`, which
+# is why the Expo app's coach and supabase clients were never committed.
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg

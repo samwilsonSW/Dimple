@@ -95,29 +95,83 @@ export default function CoachChatScreen({ route, navigation }: Props) {
       ...prev.filter((m) => m.role !== 'error'),
       { key: nextKey(), role: 'user', content: trimmed },
     ]);
-    try {
-      const resp = await coachApi.send(trimmed, conversationId);
-      if (!conversationId) setConversationId(resp.conversation_id);
+    // The reply bubble is created on the first piece of content rather than up
+    // front — an empty bubble sitting under the typing indicator looks broken.
+    let replyKey: string | null = null;
+    let confidence: number | undefined;
+
+    const patch = (key: string, fn: (m: ChatMsg) => ChatMsg) =>
+      setMessages((prev) => prev.map((m) => (m.key === key ? fn(m) : m)));
+
+    const ensureReply = () => {
+      if (replyKey) return replyKey;
+      const key = nextKey();
+      replyKey = key;
       setMessages((prev) => [
         ...prev,
-        {
-          key: nextKey(),
-          role: 'assistant',
-          content: resp.answer,
-          confidence: resp.confidence,
-          insights: resp.key_insights,
-          drills: resp.drill_recommendations,
-        },
+        { key, role: 'assistant', content: '', confidence, insights: [], drills: [] },
       ]);
+      setSending(false);
+      return key;
+    };
+
+    try {
+      for await (const event of coachApi.stream(trimmed, conversationId)) {
+        switch (event.type) {
+          case 'meta':
+            confidence = event.confidence;
+            if (!conversationId) setConversationId(event.conversation_id);
+            break;
+
+          case 'delta': {
+            const key = ensureReply();
+            patch(key, (m) => ({
+              ...m,
+              // Skip the blank lines the format can open with.
+              content: m.content ? m.content + event.text : event.text.replace(/^\s+/, ''),
+            }));
+            break;
+          }
+
+          case 'insight': {
+            const key = ensureReply();
+            patch(key, (m) => ({ ...m, insights: [...(m.insights ?? []), event.text] }));
+            break;
+          }
+
+          case 'drill': {
+            const key = ensureReply();
+            // Drills are re-sent as their fields arrive; upsert so the card
+            // fills in rather than duplicating.
+            patch(key, (m) => {
+              const drills = [...(m.drills ?? [])];
+              const at = drills.findIndex((d) => d.priority === event.drill.priority);
+              if (at >= 0) drills[at] = event.drill;
+              else drills.push(event.drill);
+              return { ...m, drills };
+            });
+            break;
+          }
+
+          case 'done': {
+            const key = ensureReply();
+            patch(key, (m) => ({ ...m, content: event.answer, confidence }));
+            break;
+          }
+        }
+      }
+      setSending(false);
     } catch (e: any) {
       failedText.current = trimmed;
       const msg =
         e instanceof CoachError ? e.message : 'Something went wrong. Tap retry.';
+      // Whatever already streamed stays on screen — the server saved it too.
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter(
+          (m) => !(m.key === replyKey && !m.content && !m.drills?.length)
+        ),
         { key: nextKey(), role: 'error', content: msg },
       ]);
-    } finally {
       setSending(false);
     }
   }
@@ -291,8 +345,19 @@ function DrillCard({ drill }: { drill: DrillRecommendation }) {
       </Pressable>
       {open && (
         <View style={styles.drillBody}>
-          <Text style={styles.drillInstructions}>{drill.instructions}</Text>
-          <Text style={styles.drillOutcome}>⚑ {drill.expected_outcome}</Text>
+          {drill.steps?.length ? (
+            drill.steps.map((step, i) => (
+              <View key={i} style={styles.drillStep}>
+                <Text style={styles.drillStepNum}>{i + 1}.</Text>
+                <Text style={styles.drillInstructions}>{step}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.drillInstructions}>{drill.instructions}</Text>
+          )}
+          {!!drill.expected_outcome && (
+            <Text style={styles.drillOutcome}>⚑ {drill.expected_outcome}</Text>
+          )}
         </View>
       )}
     </View>
@@ -391,7 +456,14 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  drillInstructions: { fontSize: 14, color: colors.label, lineHeight: 20 },
+  drillStep: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  drillStepNum: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.champagneGold,
+    minWidth: 18,
+  },
+  drillInstructions: { flex: 1, fontSize: 14, color: colors.label, lineHeight: 20 },
   drillOutcome: { fontSize: 12, color: colors.secondaryLabel },
   errorBubble: {
     backgroundColor: '#E08A0014',

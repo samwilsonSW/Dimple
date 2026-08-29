@@ -1,6 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from dataclasses import dataclass
 from typing import List, Dict, Any
+import json
 import threading
 
 from app.core.config import get_settings
@@ -12,7 +16,8 @@ from app.models.round import (
 )
 from app.services.supabase_client import get_supabase
 from app.services.embeddings import embed_text, embed_texts
-from app.services.llm import generate_coach_response, generate_structured_coach_response
+from app.services.llm import generate_coach_answer, stream_coach_response
+from app.services.coach_format import CoachStreamParser, Delta, Insight, Drill
 from app.services.title_generator import generate_title
 from app.routers import courses
 
@@ -21,7 +26,7 @@ settings = get_settings()
 app = FastAPI(
     title="Dimple API",
     description="Golf Intelligence Backend — Local Embeddings + Moonshot LLM",
-    version="1.1.0",
+    version="1.2.0",
 )
 
 app.include_router(courses.router)
@@ -614,19 +619,22 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@app.post("/api/v1/coach/chat", response_model=CoachChatResponse)
-def coach_chat(request: CoachChatRequest):
+@dataclass
+class CoachTurn:
+    """Everything the LLM call needs, plus what the client is told up front."""
+    conversation_id: int
+    system_prompt: str
+    user_prompt: str
+    confidence: int
+    inventory: Dict[str, Any]
+
+
+def prepare_coach_turn(supabase, request: CoachChatRequest) -> CoachTurn:
+    """Resolve the conversation, gather context, and build the prompts.
+
+    Everything here is blocking and happens before the first token can be
+    produced, so it is the part of coach latency that streaming cannot hide.
     """
-    Conversational AI Coach:
-    1. Build data inventory (what data exists for this player)
-    2. Fetch conditional data (round stats, trends, shots, reflections)
-    3. Build adaptive prompt based on inventory
-    4. Call Moonshot LLM to generate coaching response
-    5. Save conversation and messages to database
-    """
-    request_start = time.time()
-    supabase = get_supabase()
-    
     # 1) Get or create conversation
     conversation_id = request.conversation_id
     if conversation_id:
@@ -662,7 +670,7 @@ def coach_chat(request: CoachChatRequest):
                     title = f"Round at {course_name} — {round_date}"
             except Exception as e:
                 logger.warning(f"Round lookup failed for round_id={request.round_id}: {e}. Using default title.")
-        
+
         try:
             conv_result = supabase.table("conversations").insert({
                 "user_id": request.user_id,
@@ -689,7 +697,7 @@ def coach_chat(request: CoachChatRequest):
                     raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e2)}")
             else:
                 raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
-    
+
     # 2) Fetch conversation history (last 6 messages)
     conversation_history = []
     try:
@@ -697,12 +705,12 @@ def coach_chat(request: CoachChatRequest):
         if msgs_result.data:
             # Reverse to get chronological order
             conversation_history = [
-                {"role": m["role"], "content": m["content"]} 
+                {"role": m["role"], "content": m["content"]}
                 for m in reversed(msgs_result.data)
             ]
     except Exception:
         pass
-    
+
     # 3) Save user message
     try:
         supabase.table("messages").insert({
@@ -712,32 +720,24 @@ def coach_chat(request: CoachChatRequest):
         }).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save message: {str(e)}")
-    
-    # 3b) Generate title for new conversations (fire-and-forget, non-blocking)
-    is_new_conversation = request.conversation_id is None
-    if is_new_conversation:
-        try:
-            generated_title = generate_title(request.message)
-            if generated_title:
-                supabase.table("conversations").update({
-                    "title": generated_title
-                }).eq("id", conversation_id).execute()
-                logger.info(f"Generated title for conv {conversation_id}: '{generated_title}'")
-        except Exception as e:
-            # Non-fatal: title generation failure shouldn't break the chat
-            logger.warning(f"Title generation failed for conv {conversation_id}: {e}")
-    
+
+    # 3b) Title a brand-new conversation off the request path. This is a second
+    # LLM call; running it inline used to add its whole latency to the first
+    # message of every conversation, for a string the chat screen never shows.
+    if request.conversation_id is None:
+        _generate_title_in_background(conversation_id, request.message)
+
     # 4) Build data inventory
     inventory = build_data_inventory(supabase, request.user_id)
-    
+
     # 5) Fetch conditional data
     round_stats_text = fetch_round_stats_summary(supabase, request.user_id) if inventory["has_round_stats"] else ""
     trend_text = fetch_trend_summary(supabase, request.user_id) if inventory["has_trends"] else ""
-    
+
     similar_shots = []
     sg_summary = "No SG data available."
     shot_history_text = "No relevant shot history found."
-    
+
     if inventory["has_shots"]:
         similar_shots, sg_summary = fetch_shot_history(supabase, request.user_id, request.message)
         context_blocks = []
@@ -745,48 +745,47 @@ def coach_chat(request: CoachChatRequest):
             sg_note = f" (SG: {shot['sg_value']:+.2f})" if shot.get('sg_value') is not None else ""
             context_blocks.append(f"Shot {i}: {shot['narrative']}{sg_note}")
         shot_history_text = "\n".join(context_blocks) if context_blocks else "No relevant shot history found."
-    
+
     reflection_text = fetch_reflections(supabase, request.user_id) if inventory["has_reflections"] else ""
-    
+
     # 6) Build prompts
-    system_prompt = build_system_prompt(inventory)
-    user_prompt = build_user_prompt(
-        question=request.message,
+    return CoachTurn(
+        conversation_id=conversation_id,
+        system_prompt=build_system_prompt(inventory),
+        user_prompt=build_user_prompt(
+            question=request.message,
+            inventory=inventory,
+            round_stats_text=round_stats_text,
+            trend_text=trend_text,
+            shot_history_text=shot_history_text,
+            sg_summary=sg_summary,
+            reflection_text=reflection_text,
+            conversation_history=conversation_history,
+        ),
+        # Confidence reflects how much data backs the answer, so we can compute
+        # it here rather than asking the model to rate its own certainty.
+        confidence=determine_confidence(inventory),
         inventory=inventory,
-        round_stats_text=round_stats_text,
-        trend_text=trend_text,
-        shot_history_text=shot_history_text,
-        sg_summary=sg_summary,
-        reflection_text=reflection_text,
-        conversation_history=conversation_history,
     )
-    
-    # 7) Call LLM
-    llm_start = time.time()
-    try:
-        structured = generate_structured_coach_response(system_prompt, user_prompt)
-    except Exception as e:
-        llm_elapsed = time.time() - llm_start
-        logger.error(f"LLM generation failed after {llm_elapsed:.2f}s: {str(e)}")
-        raise HTTPException(status_code=502, detail=f"LLM generation failed: {str(e)}")
-    llm_elapsed = time.time() - llm_start
-    
-    # 8) Build response
-    answer = structured.get("answer", "")
-    confidence = structured.get("confidence", determine_confidence(inventory))
-    key_insights = structured.get("key_insights", [])
-    
-    drills = []
-    for d in structured.get("drill_recommendations", []):
-        drills.append(DrillRecommendation(
-            priority=d.get("priority", 1),
-            focus_area=d.get("focus_area", ""),
-            drill_name=d.get("drill_name", ""),
-            instructions=d.get("instructions", ""),
-            expected_outcome=d.get("expected_outcome", ""),
-        ))
-    
-    # 9) Save assistant message
+
+
+def _generate_title_in_background(conversation_id: int, first_message: str) -> None:
+    """Title a new conversation on a daemon thread. Never blocks the reply."""
+    def _run():
+        try:
+            generated_title = generate_title(first_message)
+            if generated_title:
+                get_supabase().table("conversations").update({
+                    "title": generated_title
+                }).eq("id", conversation_id).execute()
+                logger.info(f"Generated title for conv {conversation_id}: '{generated_title}'")
+        except Exception as e:  # noqa: BLE001 — a missing title must never break chat
+            logger.warning(f"Title generation failed for conv {conversation_id}: {e}")
+
+    threading.Thread(target=_run, name=f"title-{conversation_id}", daemon=True).start()
+
+
+def _save_assistant_message(supabase, conversation_id: int, answer: str) -> None:
     try:
         supabase.table("messages").insert({
             "conversation_id": conversation_id,
@@ -795,25 +794,208 @@ def coach_chat(request: CoachChatRequest):
         }).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save assistant message: {str(e)}")
-    
-    # 10) Return response with timing
+
+
+def _drill_models(drills: List[Drill]) -> List[DrillRecommendation]:
+    return [
+        DrillRecommendation(
+            priority=d.priority,
+            focus_area=d.focus_area,
+            drill_name=d.drill_name,
+            steps=d.steps,
+            instructions=d.instructions,
+            expected_outcome=d.expected_outcome,
+        )
+        for d in drills
+    ]
+
+
+@app.post("/api/v1/coach/chat", response_model=CoachChatResponse)
+def coach_chat(request: CoachChatRequest):
+    """
+    Conversational AI Coach (buffered).
+
+    Same contract as always. Internally it now runs the streaming generator to
+    completion and parses the line-tagged format, so there is one code path and
+    one output format shared with `/coach/chat/stream`.
+
+    New clients should prefer the streaming endpoint: this one cannot answer
+    before the model has finished, which for a long reply exceeds the 100s
+    Cloudflare allows the origin and comes back to the app as a 524.
+    """
+    request_start = time.time()
+    supabase = get_supabase()
+
+    turn = prepare_coach_turn(supabase, request)
+
+    llm_start = time.time()
+    try:
+        result = generate_coach_answer(turn.system_prompt, turn.user_prompt)
+    except Exception as e:
+        llm_elapsed = time.time() - llm_start
+        logger.error(f"LLM generation failed after {llm_elapsed:.2f}s: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"LLM generation failed: {str(e)}")
+    llm_elapsed = time.time() - llm_start
+
+    _save_assistant_message(supabase, turn.conversation_id, result.answer)
+
     total_elapsed = time.time() - request_start
     logger.info(
-        f"Coach chat completed: conv_id={conversation_id}, "
+        f"Coach chat completed: conv_id={turn.conversation_id}, "
         f"llm_time={llm_elapsed:.2f}s, total_time={total_elapsed:.2f}s, "
-        f"data_inventory={inventory}"
+        f"data_inventory={turn.inventory}"
     )
-    
+
     return CoachChatResponse(
-        conversation_id=conversation_id,
-        message=Message(
-            role="assistant",
-            content=answer,
-        ),
-        answer=answer,
-        confidence=confidence,
-        key_insights=key_insights,
-        drill_recommendations=drills,
+        conversation_id=turn.conversation_id,
+        message=Message(role="assistant", content=result.answer),
+        answer=result.answer,
+        confidence=turn.confidence,
+        key_insights=result.key_insights,
+        drill_recommendations=_drill_models(result.drills),
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STREAMING COACH ENDPOINT
+# ──────────────────────────────────────────────────────────────────────────────
+
+# How long to go without sending anything before emitting an SSE keepalive.
+# Cloudflare gives the origin 100s to start responding and will drop a stream
+# that then goes quiet, so we make sure it never does.
+_HEARTBEAT_SECONDS = 15.0
+
+
+def _sse(event: str, data: Dict[str, Any]) -> str:
+    """One Server-Sent Event. JSON here is a wire detail — the model never sees it."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _drill_event(drill: Drill) -> Dict[str, Any]:
+    return {
+        "index": drill.index,
+        "priority": drill.priority,
+        "drill_name": drill.drill_name,
+        "focus_area": drill.focus_area,
+        "steps": drill.steps,
+        "instructions": drill.instructions,
+        "expected_outcome": drill.expected_outcome,
+    }
+
+
+@app.post("/api/v1/coach/chat/stream")
+def coach_chat_stream(request: CoachChatRequest):
+    """
+    Conversational AI Coach (streaming, Server-Sent Events).
+
+    Events, in order:
+      `meta`    {conversation_id, confidence}  — as soon as the conversation exists
+      `delta`   {text}                         — prose to append, many of these
+      `insight` {text}                         — one completed @insight
+      `drill`   {index, priority, drill_name, focus_area, steps, instructions,
+                 expected_outcome}             — re-sent as fields arrive; upsert on `index`
+      `done`    {answer}                       — the full prose, already saved
+      `error`   {detail}                       — terminal; nothing follows
+
+    The first bytes go out before any database work, which is what keeps
+    Cloudflare from timing the request out at 100s.
+    """
+    request_start = time.time()
+    supabase = get_supabase()
+
+    def event_stream():
+        # Flush immediately. This is the whole point: Cloudflare's 100s budget is
+        # time-to-first-byte, so responding now means a slow reply can never 524.
+        yield ": connected\n\n"
+
+        # Prep is blocking, so run it off-thread and keep the pipe warm.
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(prepare_coach_turn, supabase, request)
+                while True:
+                    try:
+                        turn = future.result(timeout=_HEARTBEAT_SECONDS)
+                        break
+                    except FuturesTimeout:
+                        yield ": ping\n\n"
+        except HTTPException as e:
+            yield _sse("error", {"detail": e.detail})
+            return
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Coach prep failed: {e}")
+            yield _sse("error", {"detail": f"Failed to prepare coach turn: {e}"})
+            return
+
+        yield _sse("meta", {
+            "conversation_id": turn.conversation_id,
+            "confidence": turn.confidence,
+        })
+
+        parser = CoachStreamParser()
+        prose: List[str] = []
+        llm_start = time.time()
+
+        def render(event) -> str | None:
+            if isinstance(event, Delta):
+                prose.append(event.text)
+                return _sse("delta", {"text": event.text})
+            if isinstance(event, Insight):
+                return _sse("insight", {"text": event.text})
+            if isinstance(event, Drill):
+                return _sse("drill", _drill_event(event))
+            return None
+
+        try:
+            for chunk in stream_coach_response(turn.system_prompt, turn.user_prompt):
+                for event in parser.feed(chunk):
+                    payload = render(event)
+                    if payload:
+                        yield payload
+            for event in parser.finish():
+                payload = render(event)
+                if payload:
+                    yield payload
+        except Exception as e:  # noqa: BLE001
+            llm_elapsed = time.time() - llm_start
+            logger.error(f"LLM streaming failed after {llm_elapsed:.2f}s: {e}")
+            # Headers are long gone, so the failure has to travel as an event.
+            # Anything already streamed stays on screen and is saved below.
+            yield _sse("error", {"detail": f"LLM generation failed: {e}"})
+            answer = "".join(prose).strip()
+            if answer:
+                try:
+                    _save_assistant_message(supabase, turn.conversation_id, answer)
+                except Exception:
+                    pass
+            return
+
+        llm_elapsed = time.time() - llm_start
+        answer = "".join(prose).strip()
+
+        try:
+            _save_assistant_message(supabase, turn.conversation_id, answer)
+        except HTTPException as e:
+            yield _sse("error", {"detail": e.detail})
+            return
+
+        total_elapsed = time.time() - request_start
+        logger.info(
+            f"Coach stream completed: conv_id={turn.conversation_id}, "
+            f"llm_time={llm_elapsed:.2f}s, total_time={total_elapsed:.2f}s, "
+            f"data_inventory={turn.inventory}"
+        )
+        yield _sse("done", {"answer": answer})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Tell nginx-style proxies not to buffer; without it a reverse proxy
+            # can hold the whole stream and hand back one blob at the end.
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

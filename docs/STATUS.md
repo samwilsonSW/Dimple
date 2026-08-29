@@ -9,7 +9,7 @@
 
 ## Right Now
 
-**Version:** 1.1.0  
+**Version:** 1.2.0  
 **Branch:** `Kanary` (working) → `main` (release)  
 **API:** `https://dimple-api.chokepointmonitor.com`
 
@@ -17,8 +17,19 @@
 - Course search + selection
 - Scorecard entry (per-hole, auto-save, first-putt distance + penalty shots)
 - Round history with stats
-- AI Coach chat (conversational, data-aware)
+- AI Coach chat (conversational, data-aware, streaming)
 - Manual course entry (verified on device 22 Aug — full round entered end to end)
+
+### Just landed — needs a device check
+- Coach streaming (`POST /coach/chat/stream`, SSE). This fixes the real cause of
+  "couldn't reach the coach": the API sits behind Cloudflare, which gives the
+  origin 100s to start responding, and a long reply blew through it and came
+  back as a 524. Reproduced on 2026-08-29 — a 125s reply returned HTTP 524.
+  Streaming sends the first byte before any database work, so the clock never
+  starts. **Not yet verified against the live server or on device.**
+- The coach LLM no longer emits JSON. It writes a line-tagged format
+  (`backend/app/services/coach_format.py`). A malformed reply used to 502 and
+  throw away the whole paid call; now a bad tag costs one drill card.
 
 ### In Progress
 - Strokes-gained rebuild. The committed baselines are wrong by 5-17 strokes a
@@ -35,7 +46,8 @@
   per-hole data. Without it, ingestion still succeeds and logs a warning.
 
 ### Blocked / Deferred
-- Coach loading indicator — parked post-v1.0.0
+- Coach loading indicator — unparked by streaming; the typing indicator now
+  hands over to live text. Worth a design pass on device.
 - Submit idempotency — backlog
 - Swipe-to-delete — needs backend DELETE endpoint
 
