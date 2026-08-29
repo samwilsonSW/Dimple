@@ -12,6 +12,7 @@ enum CoachError: LocalizedError {
     case offline
     case server(status: Int)
     case cancelled
+    case badResponse
     case underlying(String)
 
     init(urlError e: URLError) {
@@ -38,6 +39,8 @@ enum CoachError: LocalizedError {
                 : "Something went wrong (\(status)). Tap retry."
         case .cancelled:
             return "That request was cancelled. Tap retry."
+        case .badResponse:
+            return "The coach sent something we couldn't read. Tap retry."
         case .underlying(let message):
             return message
         }
@@ -88,6 +91,121 @@ final class CoachService {
 
         let data = try await Self.perform(request)
         return try JSONDecoder().decode(CoachChatResponse.self, from: data)
+    }
+
+    // MARK: Streaming send
+
+    /// One event from `POST /api/v1/coach/chat/stream`.
+    enum StreamEvent {
+        case meta(conversationID: Int, confidence: Int)
+        case delta(String)
+        case insight(String)
+        case drill(DrillRecommendation)
+        case done(answer: String)
+    }
+
+    // `nonisolated` because the project builds with SWIFT_DEFAULT_ACTOR_ISOLATION
+    // = MainActor, and these are decoded off the main actor while the stream runs.
+    private nonisolated struct MetaPayload: Decodable { let conversation_id: Int; let confidence: Int }
+    private nonisolated struct TextPayload: Decodable { let text: String }
+    private nonisolated struct DonePayload: Decodable { let answer: String }
+    private nonisolated struct ErrorPayload: Decodable { let detail: String }
+
+    /// Streams a coach reply as it is written.
+    ///
+    /// This is the path that survives a slow answer. The buffered endpoint can't
+    /// send a byte until the model has finished, and Cloudflare only gives the
+    /// origin 100s to start responding — so a long reply came back to the app as
+    /// a 524 and read to the player as "couldn't reach the coach". Here the
+    /// first bytes arrive immediately and the clock never starts.
+    func stream(
+        message: String,
+        conversationID: Int?,
+        roundID: Int? = nil
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let session = try await supabase.auth.session
+                    let userID = session.user.id.uuidString.lowercased()
+
+                    let url = URL(string: "\(baseURL)/api/v1/coach/chat/stream")!
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    // Generous, but no longer load-bearing: the stream starts in
+                    // seconds, so this only guards against a truly dead socket.
+                    request.timeoutInterval = 180
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+                    request.httpBody = try JSONEncoder().encode(
+                        ChatRequest(user_id: userID, conversation_id: conversationID, message: message, round_id: roundID)
+                    )
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw CoachError.underlying("Unexpected response from the server.")
+                    }
+                    guard http.statusCode == 200 else {
+                        throw CoachError.server(status: http.statusCode)
+                    }
+
+                    let decoder = JSONDecoder()
+                    var eventName = "message"
+                    var dataLines: [String] = []
+
+                    // Server-Sent Events: `event:` names it, `data:` carries it,
+                    // a blank line dispatches it, and a leading `:` is a keepalive.
+                    func dispatch() throws {
+                        defer { eventName = "message"; dataLines.removeAll() }
+                        guard !dataLines.isEmpty else { return }
+                        let data = Data(dataLines.joined(separator: "\n").utf8)
+                        switch eventName {
+                        case "meta":
+                            let m = try decoder.decode(MetaPayload.self, from: data)
+                            continuation.yield(.meta(conversationID: m.conversation_id, confidence: m.confidence))
+                        case "delta":
+                            continuation.yield(.delta(try decoder.decode(TextPayload.self, from: data).text))
+                        case "insight":
+                            continuation.yield(.insight(try decoder.decode(TextPayload.self, from: data).text))
+                        case "drill":
+                            continuation.yield(.drill(try decoder.decode(DrillRecommendation.self, from: data)))
+                        case "done":
+                            continuation.yield(.done(answer: try decoder.decode(DonePayload.self, from: data).answer))
+                        case "error":
+                            throw CoachError.underlying(try decoder.decode(ErrorPayload.self, from: data).detail)
+                        default:
+                            break // Unknown event type — ignore it rather than fail.
+                        }
+                    }
+
+                    for try await line in bytes.lines {
+                        if line.isEmpty {
+                            try dispatch()
+                        } else if line.hasPrefix(":") {
+                            continue // keepalive
+                        } else if line.hasPrefix("event:") {
+                            eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                        } else if line.hasPrefix("data:") {
+                            var value = String(line.dropFirst(5))
+                            if value.hasPrefix(" ") { value.removeFirst() }
+                            dataLines.append(value)
+                        }
+                    }
+                    try dispatch() // in case the stream ended without a trailing blank line
+                    continuation.finish()
+                } catch let error as CoachError {
+                    continuation.finish(throwing: error)
+                } catch let error as URLError {
+                    continuation.finish(throwing: CoachError(urlError: error))
+                } catch is DecodingError {
+                    continuation.finish(throwing: CoachError.badResponse)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     // MARK: Conversation list
