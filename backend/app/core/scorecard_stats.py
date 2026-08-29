@@ -326,6 +326,26 @@ def _new_input_rollups(hole_data: List[HoleResult]) -> Dict[str, Any]:
     return out
 
 
+def _mean(rounds: List[Dict[str, Any]], key: str) -> float | None:
+    """Average `key` over the rounds that actually have it.
+
+    Columns added by a later migration are NULL on older rounds — migration 021
+    made `sg_short` and `sg_driving` nullable on purpose. Treating a NULL as 0
+    would drag the average toward zero and hand the coach a number the player
+    never shot, so absent values are skipped and an all-NULL column averages to
+    None for the caller to render as unknown.
+    """
+    present = [r.get(key) for r in rounds]
+    present = [v for v in present if v is not None]
+    if not present:
+        return None
+    return sum(present) / len(present)
+
+
+def _round(value: float | None, digits: int) -> float | None:
+    return None if value is None else round(value, digits)
+
+
 def get_trend_summary(
     recent_rounds: List[Dict[str, Any]],
     num_rounds: int = 5,
@@ -337,26 +357,26 @@ def get_trend_summary(
 
     n = len(rounds_to_analyze)
 
-    avg_gir = sum(r["gir_percentage"] for r in rounds_to_analyze) / n
-    avg_fairway = sum(r["fairway_percentage"] for r in rounds_to_analyze) / n
-    avg_putts = sum(r["total_putts"] for r in rounds_to_analyze) / n
-    avg_sg_putting = sum(r.get("sg_putting", 0) for r in rounds_to_analyze) / n
-    avg_sg_approach = sum(r.get("sg_approach", 0) for r in rounds_to_analyze) / n
+    avg_gir = _mean(rounds_to_analyze, "gir_percentage")
+    avg_fairway = _mean(rounds_to_analyze, "fairway_percentage")
+    avg_putts = _mean(rounds_to_analyze, "total_putts")
+    avg_sg_putting = _mean(rounds_to_analyze, "sg_putting")
+    avg_sg_approach = _mean(rounds_to_analyze, "sg_approach")
 
-    if n >= 2:
-        last = rounds_to_analyze[0]
-        previous_avg = sum(r["total_score"] for r in rounds_to_analyze[1:]) / (n - 1)
-        score_trend = last["total_score"] - previous_avg
+    scores = [r.get("total_score") for r in rounds_to_analyze]
+    earlier = [s for s in scores[1:] if s is not None]
+    if scores[0] is not None and earlier:
+        score_trend = scores[0] - sum(earlier) / len(earlier)
     else:
         score_trend = 0
 
     return {
         "rounds_analyzed": n,
-        "avg_gir_percentage": round(avg_gir, 3),
-        "avg_fairway_percentage": round(avg_fairway, 3),
-        "avg_putts_per_round": round(avg_putts, 1),
-        "avg_sg_putting": round(avg_sg_putting, 2),
-        "avg_sg_approach": round(avg_sg_approach, 2),
+        "avg_gir_percentage": _round(avg_gir, 3),
+        "avg_fairway_percentage": _round(avg_fairway, 3),
+        "avg_putts_per_round": _round(avg_putts, 1),
+        "avg_sg_putting": _round(avg_sg_putting, 2),
+        "avg_sg_approach": _round(avg_sg_approach, 2),
         "score_trend": round(score_trend, 1),
         "trend_direction": "improving" if score_trend < -1 else "declining" if score_trend > 1 else "stable",
     }

@@ -89,6 +89,56 @@ def tier_offline() -> None:
             "" if out.read_text() == rendered else "stale — run scripts/export_openapi.py",
         )
 
+    # ── NULL-safe stat rendering ─────────────────────────────────────────────
+    # Migration 021 added sg_short/sg_driving as nullable, so every round logged
+    # before it has NULL there. `dict.get(key, 0)` does not help — the key
+    # exists — and formatting None raised "unsupported format string passed to
+    # NoneType.__format__", which killed the whole coach turn.
+    from app.main import _num, fetch_round_stats_summary, fetch_trend_summary
+    from app.core.scorecard_stats import get_trend_summary
+
+    pre_021 = {
+        "total_score": 88, "gir_percentage": 0.33, "fairway_percentage": 0.5,
+        "total_putts": 34, "sg_putting": -1.2, "sg_approach": -2.1,
+        "sg_short": None, "sg_driving": None,
+    }
+    all_null = {k: None for k in pre_021}
+
+    class _Rows:
+        def __init__(self, rows): self.rows = rows
+        def table(self, _): return self
+        def select(self, *a, **k): return self
+        def eq(self, *a, **k): return self
+        def order(self, *a, **k): return self
+        def limit(self, *a, **k): return self
+        def execute(self): return type("R", (), {"data": self.rows})()
+
+    check("stats: None formats as n/a, not a crash", _num(None, "+.1f") == "n/a")
+    check("stats: real values still format", _num(0.333, ".0%") == "33%" and _num(-1.25, "+.1f") == "-1.2")
+
+    try:
+        line = fetch_round_stats_summary(_Rows([pre_021]), "u")
+        ok = "SG Short n/a" in line and "SG Putting -1.2" in line
+        check("stats: a pre-021 round renders without raising", ok, "" if ok else line)
+    except Exception as exc:  # noqa: BLE001
+        check("stats: a pre-021 round renders without raising", False, f"{type(exc).__name__}: {exc}")
+
+    try:
+        fetch_round_stats_summary(_Rows([all_null]), "u")
+        fetch_trend_summary(_Rows([all_null] * 5), "u")
+        check("stats: an all-NULL round renders without raising", True)
+    except Exception as exc:  # noqa: BLE001
+        check("stats: an all-NULL round renders without raising", False, f"{type(exc).__name__}: {exc}")
+
+    mixed = [pre_021, {**pre_021, "sg_putting": None}, {**pre_021, "total_score": None}]
+    trend = get_trend_summary(mixed)
+    ok = trend["avg_sg_putting"] == -1.2
+    check(
+        "stats: a NULL is skipped from the average, not counted as 0",
+        ok,
+        "" if ok else f"got {trend['avg_sg_putting']}",
+    )
+
     # ── coach wire format ────────────────────────────────────────────────────
     # Pure logic, no credentials, no network — so it belongs in the gate. The
     # format replaced JSON precisely so a bad reply degrades instead of dying;

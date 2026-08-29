@@ -371,6 +371,40 @@ def build_data_inventory(supabase, user_id: str) -> Dict[str, Any]:
     return inventory
 
 
+def _num(value: Any, spec: str = "", unknown: str = "n/a") -> str:
+    """Format a stat that may be NULL in the database.
+
+    Migration 021 added `sg_short` and `sg_driving` as nullable, so any round
+    logged before it has NULL there. `dict.get(key, 0)` does not save you — the
+    key exists, its value is None — and `f"{None:+.1f}"` raises
+    "unsupported format string passed to NoneType.__format__".
+
+    Renders unknown rather than 0.0 on purpose: telling the coach a player is
+    +0.0 in a category it has no data for invites advice built on a number they
+    never shot.
+    """
+    if value is None:
+        return unknown
+    try:
+        return format(value, spec)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _safe(label: str, fn, default):
+    """Run a context fetch, or give up on just that piece of context.
+
+    Context is an optimisation, not a requirement: the coach can answer with
+    less of it. Letting one bad row take down the whole turn is how a single
+    NULL column turned into "Failed to prepare coach turn" and no reply at all.
+    """
+    try:
+        return fn()
+    except Exception as exc:  # noqa: BLE001 — never lose a reply over context
+        logger.warning(f"Coach context: {label} failed, continuing without it: {exc}")
+        return default
+
+
 def fetch_round_stats_summary(supabase, user_id: str, limit: int = 3) -> str:
     """Fetch recent round stats for the prompt."""
     try:
@@ -385,10 +419,14 @@ def fetch_round_stats_summary(supabase, user_id: str, limit: int = 3) -> str:
     lines = [f"Recent Round Stats (last {len(stats)} rounds):"]
     for i, s in enumerate(stats, 1):
         lines.append(
-            f"Round {i}: Score {s['total_score']}, GIR {s['gir_percentage']:.0%}, "
-            f"Fairway {s['fairway_percentage']:.0%}, Putts {s['total_putts']}, "
-            f"SG Putting {s['sg_putting']:+.1f}, SG Short {s.get('sg_short', 0):+.1f}, "
-            f"SG Driving {s.get('sg_driving', 0):+.1f}, SG Approach {s['sg_approach']:+.1f}"
+            f"Round {i}: Score {_num(s.get('total_score'))}, "
+            f"GIR {_num(s.get('gir_percentage'), '.0%')}, "
+            f"Fairway {_num(s.get('fairway_percentage'), '.0%')}, "
+            f"Putts {_num(s.get('total_putts'))}, "
+            f"SG Putting {_num(s.get('sg_putting'), '+.1f')}, "
+            f"SG Short {_num(s.get('sg_short'), '+.1f')}, "
+            f"SG Driving {_num(s.get('sg_driving'), '+.1f')}, "
+            f"SG Approach {_num(s.get('sg_approach'), '+.1f')}"
         )
     return "\n".join(lines)
 
@@ -412,12 +450,12 @@ def fetch_trend_summary(supabase, user_id: str) -> str:
     
     lines = [
         f"Trends (last {trends['rounds_analyzed']} rounds):",
-        f"  Avg GIR: {trends['avg_gir_percentage']:.0%}",
-        f"  Avg Fairway: {trends['avg_fairway_percentage']:.0%}",
-        f"  Avg Putts: {trends['avg_putts_per_round']:.1f}",
-        f"  Avg SG Putting: {trends['avg_sg_putting']:+.2f}",
-        f"  Avg SG Approach: {trends['avg_sg_approach']:+.2f}",
-        f"  Trend: {trends['trend_direction']}",
+        f"  Avg GIR: {_num(trends.get('avg_gir_percentage'), '.0%')}",
+        f"  Avg Fairway: {_num(trends.get('avg_fairway_percentage'), '.0%')}",
+        f"  Avg Putts: {_num(trends.get('avg_putts_per_round'), '.1f')}",
+        f"  Avg SG Putting: {_num(trends.get('avg_sg_putting'), '+.2f')}",
+        f"  Avg SG Approach: {_num(trends.get('avg_sg_approach'), '+.2f')}",
+        f"  Trend: {trends.get('trend_direction', 'unknown')}",
     ]
     return "\n".join(lines)
 
@@ -730,23 +768,40 @@ def prepare_coach_turn(supabase, request: CoachChatRequest) -> CoachTurn:
     # 4) Build data inventory
     inventory = build_data_inventory(supabase, request.user_id)
 
-    # 5) Fetch conditional data
-    round_stats_text = fetch_round_stats_summary(supabase, request.user_id) if inventory["has_round_stats"] else ""
-    trend_text = fetch_trend_summary(supabase, request.user_id) if inventory["has_trends"] else ""
+    # 5) Fetch conditional data. Each piece is optional — see `_safe`.
+    round_stats_text = _safe(
+        "round stats",
+        lambda: fetch_round_stats_summary(supabase, request.user_id),
+        "",
+    ) if inventory["has_round_stats"] else ""
 
-    similar_shots = []
+    trend_text = _safe(
+        "trends",
+        lambda: fetch_trend_summary(supabase, request.user_id),
+        "",
+    ) if inventory["has_trends"] else ""
+
     sg_summary = "No SG data available."
     shot_history_text = "No relevant shot history found."
 
     if inventory["has_shots"]:
-        similar_shots, sg_summary = fetch_shot_history(supabase, request.user_id, request.message)
+        similar_shots, sg_summary = _safe(
+            "shot history",
+            lambda: fetch_shot_history(supabase, request.user_id, request.message),
+            ([], "No SG data available."),
+        )
         context_blocks = []
         for i, shot in enumerate(similar_shots, 1):
-            sg_note = f" (SG: {shot['sg_value']:+.2f})" if shot.get('sg_value') is not None else ""
-            context_blocks.append(f"Shot {i}: {shot['narrative']}{sg_note}")
+            sg_value = shot.get("sg_value")
+            sg_note = f" (SG: {_num(sg_value, '+.2f')})" if sg_value is not None else ""
+            context_blocks.append(f"Shot {i}: {shot.get('narrative', '')}{sg_note}")
         shot_history_text = "\n".join(context_blocks) if context_blocks else "No relevant shot history found."
 
-    reflection_text = fetch_reflections(supabase, request.user_id) if inventory["has_reflections"] else ""
+    reflection_text = _safe(
+        "reflections",
+        lambda: fetch_reflections(supabase, request.user_id),
+        "",
+    ) if inventory["has_reflections"] else ""
 
     # 6) Build prompts
     return CoachTurn(
