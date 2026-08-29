@@ -271,9 +271,19 @@ def calculate_round_stats(
         total_par = sum(h.par for h in hole_data)
 
     if course_rating and course_slope:
-        expected_score = course_rating + (handicap * course_slope / 113)
+        # Course rating/slope is for 18 holes. If only 9 were played,
+        # halve the rating and the handicap contribution.
+        num_holes = len(hole_data)
+        if num_holes <= 9:
+            expected_score = (course_rating / 2) + (handicap * course_slope / 113 / 2)
+        else:
+            expected_score = course_rating + (handicap * course_slope / 113)
     else:
-        expected_score = total_par + handicap
+        # No course rating/slope — use par + handicap.
+        # Handicap index is an 18-hole measure; prorate for 9-hole rounds.
+        num_holes = len(hole_data)
+        hcp_adjusted = handicap * (num_holes / 18) if num_holes < 18 else handicap
+        expected_score = total_par + hcp_adjusted
 
     strokes_over_under = total_score - expected_score
 
