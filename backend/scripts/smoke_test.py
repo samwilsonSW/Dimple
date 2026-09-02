@@ -252,7 +252,9 @@ def tier_live(url: str, user_id: str | None) -> None:
     check("GET /health", status == 200 and payload == {"status": "ok"}, f"{status} {payload}")
 
     status, payload = request(f"{url}/api/v1/courses/search?q=Pinehurst&limit=3")
-    check("GET /api/v1/courses/search", status == 200 and isinstance(payload, list),
+    # The contract wraps the results: {"courses": [...]} (plus query/count).
+    courses = payload.get("courses") if isinstance(payload, dict) else None
+    check("GET /api/v1/courses/search", status == 200 and isinstance(courses, list),
           f"status {status}")
 
     status, payload = request(f"{url}/api/v1/rounds?user_id={user_id or ''}&limit=1")
