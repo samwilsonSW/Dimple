@@ -99,6 +99,13 @@ POST /api/v1/rounds
 - Per-hole entries are persisted to `hole_scores`, so rounds can be recomputed
   when the strokes-gained model changes. Failure to store them does not fail
   the request; the round and its stats still land.
+- The four `sg_*` figures telescope: their sum equals expected strokes from
+  the tee minus actual score, per hole, exactly. Handicaps above 25 are
+  measured against the 25 baseline (the calibration data ends there).
+  `penalty_strokes` has no separate SG term — a scorecard cannot attribute a
+  penalty to a swing; the cost lands in `sg_approach`'s stroke count and the
+  baselines price average penalty exposure, so ordinary penalty frequency
+  nets zero. See `docs/SG_REBUILD.md`, "State of play".
 - `manual_course.par_values` is the whole course; `strokes_over_under` and
   `avg_score_to_par` count only the holes present in `hole_data`, matched by
   `hole_number`. A front-nine round on an 18-hole manual course is scored
@@ -302,6 +309,8 @@ a stray line rather than a lost reply.
 - `gir_count`, `gir_percentage` int/numeric
 - `fairways_hit`, `fairways_possible`, `fairway_percentage` int/numeric
 - `sg_putting`, `sg_approach` numeric
+- `sg_short`, `sg_driving` numeric, nullable (migration 021) — null means the
+  round predates four-category attribution
 - `strokes_over_under` numeric
 - `avg_putts_per_hole`, `avg_score_to_par` numeric
 - `total_penalty_strokes` int, nullable — null means the round predates collection
@@ -372,6 +381,7 @@ seam — this table is the reason it exists.
 | 2026-08-21 | 0.7.1 | Fix: `manual_course` stats summed all par values regardless of holes played, so partial rounds reported a wrong `strokes_over_under`. Now matched by `hole_number`. |
 | 2026-08-29 | 1.2.0 | Added `POST /coach/chat/stream` (SSE). The coach LLM no longer emits JSON — it writes the line-tagged format above, parsed by `coach_format.py`. `drill_recommendations` gains `steps`; `instructions` stays as a joined string for older clients. `confidence` is now computed from the data inventory rather than self-reported by the model, and conversation titling moved off the request path. |
 | 2026-08-28 | 1.1.0 | Added `first_putt` and `penalty_strokes` to `hole_data`, and the `hole_scores` table (migration 020). Per-hole data is now persisted rather than discarded, so rounds can be recomputed. `round_stats` gains `total_penalty_strokes` and `avg_first_putt_ft`. Both new fields are recorded but not yet used in the SG figures — see `docs/SG_REBUILD.md`. |
+| 2026-09-02 | 1.2.1 | Strokes-gained attribution rebuilt on the surface's own conditional expectations: the four `sg_*` values now telescope exactly to expected-minus-actual per hole, no legal scorecard raises (handicap > 18 with an unrecorded first putt used to crash stats out of the round silently), first-putt buckets priced at model certainty-equivalents, penalties documented as inside `sg_approach`'s counts. Shapes unchanged; every number changes slightly. Old rounds are recomputable from `hole_scores`. |
 
 `0.7.2` is proposed on `feature/coach-context-memory` (conversation summary,
 migration 020) and is **not** merged — see PR #16.

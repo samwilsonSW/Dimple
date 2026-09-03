@@ -50,3 +50,8 @@ jobs:
         # Redundant with the smoke test, but fails with a message that names
         # the fix, which is what a contributor actually needs to see.
         run: uv run python scripts/export_openapi.py --check
+
+      - name: Strokes-gained gates
+        # Conservation, totality, and self-play zero-mean on the live SG path.
+        # Offline: reads the committed surface cache, simulates, asserts.
+        run: uv run python scripts/verify_sg.py

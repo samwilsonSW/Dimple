@@ -33,7 +33,7 @@ Held out: avg_score — the aggregate the committed tables miss by up to 17.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -328,68 +328,96 @@ class Predicted:
     gir_pct: float
 
 
-def predict(surface: Surface) -> Predicted:
+@dataclass
+class HoleSim:
     """
-    Play the reference course against the surface.
+    Instrumented outcomes of many simulated plays of one hole.
 
-    Expected strokes from the tee, summed over 18 holes, is the expected score —
-    the same identity the audit uses, now evaluated on a derived surface instead
-    of a typed one.
+    This is the one place hole play is simulated. The scorecard reconstruction
+    in `scorecard_stats.py` compares against conditional expectations of these
+    outcomes, so attribution and surface share a single generative model — the
+    property every strokes-gained identity in this codebase depends on.
+
+    Values are expected strokes looked up on the surface, with penalty strokes
+    included where they occurred. `prechip_value` is NaN for plays that never
+    chipped.
+    """
+
+    fw_hit: np.ndarray          # bool — tee shot finished in the fairway, clean
+    value_after_tee: np.ndarray  # E(position after the tee shot), +1 if penalised
+    shots_to_green: np.ndarray  # int — swings + chips + penalty strokes to reach green
+    penalties: np.ndarray       # int — penalty events before reaching the green
+    first_putt_ft: np.ndarray   # feet — where the ball first lay on the green
+    chipped: np.ndarray         # bool — at least one greenside chip was played
+    prechip_value: np.ndarray   # E(position before the first chip); NaN if none
+
+
+def simulate_holes(
+    surface: Surface,
+    hole_yards: float,
+    n: int,
+    rng: np.random.Generator,
+    max_shots: int = 14,
+) -> HoleSim:
+    """
+    Play one hole `n` times under the surface's own dispersion model.
+
+    Movement, classification, and disasters mirror `_sweep` exactly — a shot
+    here must land where the recursion says shots land, or the conditional
+    tables drift from the surface and the strokes-gained identities break.
     """
     disp = surface.dispersion
-    score = sum(surface.strokes(hole.yards, "tee") for hole in REFERENCE_COURSE)
-
-    rng = np.random.default_rng(SEED + 1)
-    putts_total = 0.0
-    gir_hits = 0.0
-
-    for hole in REFERENCE_COURSE:
-        reg_shots = hole.par - 2
-        putts, reached = _simulate_to_green(hole.yards, reg_shots, disp, surface.green_ft, rng)
-        gir_hits += reached
-        putts_total += putts
-
-    holes = len(REFERENCE_COURSE)
-    return Predicted(
-        avg_score=score,
-        avg_putts=putts_total,
-        gir_pct=gir_hits / holes,
-    )
-
-
-def _simulate_to_green(
-    hole_yards: float,
-    reg_shots: int,
-    disp: PlayerDispersion,
-    green: np.ndarray,
-    rng: np.random.Generator,
-) -> Tuple[float, float]:
-    """
-    Play a hole up to the green. Returns (expected putts, GIR rate).
-
-    Vectorised over many plays of the same hole so the rate is smooth. Putts are
-    averaged over the distribution of first-putt distances rather than read at
-    its mean: expected putts is concave in distance, so by Jensen, collapsing to
-    the mean first would overstate putts.
-    """
-    n = 600
     geom = disp.geometry
+    green = surface.green_ft
+
     d = np.full(n, float(hole_yards))
     lie = np.full(n, "tee", dtype=object)
     on_green = np.zeros(n, dtype=bool)
     shots = np.zeros(n, dtype=int)
+    penalties = np.zeros(n, dtype=int)
     first_putt_ft = np.zeros(n)
-    reached_in_reg = np.zeros(n, dtype=bool)
+    fw_hit = np.zeros(n, dtype=bool)
+    value_after_tee = np.zeros(n)
+    chipped = np.zeros(n, dtype=bool)
+    prechip_value = np.full(n, np.nan)
 
-    for _ in range(8):
+    def state_value(dist: np.ndarray, lies: np.ndarray) -> np.ndarray:
+        """E(position) for arrays of (distance, lie), green in feet handled."""
+        out = np.empty(len(dist))
+        for l in FULL_LIES:
+            sel = lies == l
+            if sel.any():
+                idx = np.clip(dist[sel].astype(int), 0, MAX_YARDS - 1)
+                out[sel] = surface.full[l][idx]
+        sel = lies == "green"
+        if sel.any():
+            idx = np.clip(np.round(dist[sel] * YARDS_TO_FEET).astype(int), 0, MAX_PUTT_FT - 1)
+            out[sel] = green[idx]
+        return out
+
+    for _ in range(max_shots):
         live = ~on_green
         if not live.any():
             break
 
-        # Anything just off the green gets chipped on, matching the recursion.
+        # One shot per ball per iteration. Without this, a ball landing
+        # greenside during the fairway pass is picked up by the rough pass of
+        # the same iteration and swings again — a full swing from 15 yards,
+        # which the fraction-of-distance dispersion makes far better than the
+        # chip model the recursion prices there. That bypass let simulated
+        # play beat the surface by more than a stroke a round.
+        acted = np.zeros(n, dtype=bool)
+
+        # Greenside band: chip, matching `_greenside_values`.
         chip = live & (d <= GREENSIDE_YARDS) & (lie != "tee")
         if chip.any():
             idx = np.where(chip)[0]
+            first = ~chipped[idx]
+            if first.any():
+                fi = idx[first]
+                prechip_value[fi] = state_value(d[fi], lie[fi])
+                chipped[fi] = True
+
             mult = np.array(
                 [
                     {"fairway": 1.0, "rough": disp.rough_penalty, "sand": disp.sand_penalty}.get(l, 1.0)
@@ -399,14 +427,21 @@ def _simulate_to_green(
             scale = 0.55 + 0.45 * (d[idx] / GREENSIDE_YARDS)
             mean_ft = disp.short_game_proximity_ft * mult * scale
             shape = disp.short_game_shape
-            first_putt_ft[idx] = rng.gamma(shape, size=idx.shape) * (mean_ft / shape)
-            shots[idx] += 1
+            prox = rng.gamma(shape, size=idx.shape) * (mean_ft / shape)
+
+            # A failed bunker escape costs an extra stroke from the same spot,
+            # exactly as `_greenside_values` charges it.
+            is_sand = np.array([l == "sand" for l in lie[idx]])
+            stuck = is_sand & (rng.random(idx.shape) < disp.sand_escape_fail_rate)
+
+            shots[idx] += 1 + stuck.astype(int)
+            first_putt_ft[idx] = prox
             on_green[idx] = True
-            reached_in_reg[idx] = shots[idx] <= reg_shots
+            acted[idx] = True
             live = ~on_green
 
         for l in FULL_LIES:
-            sel = live & (lie == l)
+            sel = live & (lie == l) & ~acted
             if not sel.any():
                 continue
 
@@ -420,16 +455,20 @@ def _simulate_to_green(
             if l == "tee":
                 trouble = rng.random(att.shape) < geom.recovery_rate_tee
                 carry = np.where(trouble, att * 0.40, carry)
+            else:
+                trouble = np.zeros(att.shape, dtype=bool)
 
             nd = np.sqrt((dd - carry) ** 2 + lateral**2)
+            nd = np.clip(nd, 0.0, MAX_YARDS - 1)
 
-            new_lie = np.where(
-                nd <= GREENSIDE_YARDS,
-                np.where(rng.random(nd.shape) < geom.greenside_sand_share, "sand", "rough"),
-                np.where(lateral <= geom.fairway_half_width_yards, "fairway", "rough"),
-            )
+            on = (nd <= geom.green_radius_yards) & ~trouble
+            gside = (~on) & (nd <= GREENSIDE_YARDS)
+            in_sand = gside & (rng.random(nd.shape) < geom.greenside_sand_share)
+            in_fw = (~on) & (~gside) & (lateral <= geom.fairway_half_width_yards) & ~trouble
 
-            # Same disasters as the recursion, so predictions match the surface.
+            new_lie = np.where(on, "green", np.where(in_sand, "sand", np.where(in_fw, "fairway", "rough")))
+
+            # Disasters, mirroring `_sweep`.
             if l == "sand":
                 stuck = rng.random(nd.shape) < disp.sand_escape_fail_rate
                 nd = np.where(stuck, dd, nd)
@@ -439,25 +478,269 @@ def _simulate_to_green(
             nd = np.where(penalised, dd, nd)
             new_lie = np.where(penalised, "rough", new_lie)
 
-            landed_green = (nd <= geom.green_radius_yards) & ~penalised
-
             idx = np.where(sel)[0]
+            landed = (new_lie == "green") & ~penalised
+
+            if l == "tee":
+                clean_fw = (new_lie == "fairway") & ~penalised
+                fw_hit[idx] = clean_fw
+                value_after_tee[idx] = state_value(nd, new_lie) + np.where(penalised, 1.0, 0.0)
+
             d[idx] = nd
             lie[idx] = new_lie
             shots[idx] += np.where(penalised, 2, 1)
-            newly = landed_green & ~on_green[idx]
-            on_green[idx[newly]] = True
-            first_putt_ft[idx[newly]] = nd[newly] * YARDS_TO_FEET
-            reached_in_reg[idx[newly]] = shots[idx][newly] <= reg_shots
+            penalties[idx] += penalised.astype(int)
+            acted[idx] = True
 
-    # Anything still off the green after eight shots is on in a stroke's time.
+            li = idx[landed]
+            on_green[li] = True
+            first_putt_ft[li] = nd[landed] * YARDS_TO_FEET
+
+    # Anything still off the green is put on in a stroke's time.
     stragglers = ~on_green
-    first_putt_ft[stragglers] = disp.short_game_proximity_ft
+    if stragglers.any():
+        first_putt_ft[stragglers] = disp.short_game_proximity_ft
+        shots[stragglers] += 1
 
-    putt_idx = np.clip(np.round(first_putt_ft).astype(int), 0, MAX_PUTT_FT - 1)
-    expected_putts = float(np.mean(green[putt_idx]))
+    return HoleSim(
+        fw_hit=fw_hit,
+        value_after_tee=value_after_tee,
+        shots_to_green=shots,
+        penalties=penalties,
+        first_putt_ft=first_putt_ft,
+        chipped=chipped,
+        prechip_value=prechip_value,
+    )
 
-    return expected_putts, float(np.mean(reached_in_reg))
+
+def simulate_putt_counts(
+    surface: Surface, first_putt_ft: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
+    """Integer putt counts from first-putt distances, drawn from the make model."""
+    skill = surface.dispersion.putting
+    d = first_putt_ft.copy().astype(float)
+    holed = d <= 0.25
+    counts = np.zeros(len(d), dtype=int)
+    for _ in range(5):
+        live = ~holed
+        if not live.any():
+            break
+        counts[live] += 1
+        p = np.array([skill.make_probability(float(x)) for x in d[live]])
+        made = rng.random(p.shape) < p
+        li = np.where(live)[0]
+        holed[li[made]] = True
+        miss = li[~made]
+        d[miss] = np.array([skill.lag_distance_ft(float(x)) for x in d[miss]])
+    counts[~holed] += 1  # cap: anything still out is conceded next stroke
+    return counts
+
+
+def predict(surface: Surface) -> Predicted:
+    """
+    Play the reference course against the surface.
+
+    Expected strokes from the tee, summed over 18 holes, is the expected score —
+    the same identity the audit uses, now evaluated on a derived surface instead
+    of a typed one. Putts are averaged over the distribution of first-putt
+    distances rather than read at its mean: expected putts is concave in
+    distance, so by Jensen, collapsing to the mean first would overstate putts.
+    """
+    score = sum(surface.strokes(hole.yards, "tee") for hole in REFERENCE_COURSE)
+
+    rng = np.random.default_rng(SEED + 1)
+    putts_total = 0.0
+    gir_hits = 0.0
+
+    for hole in REFERENCE_COURSE:
+        sim = simulate_holes(surface, hole.yards, n=600, rng=rng)
+        reached = sim.shots_to_green <= (hole.par - 2)
+        gir_hits += float(np.mean(reached))
+        idx = np.clip(np.round(sim.first_putt_ft).astype(int), 0, MAX_PUTT_FT - 1)
+        putts_total += float(np.mean(surface.green_ft[idx]))
+
+    holes = len(REFERENCE_COURSE)
+    return Predicted(
+        avg_score=score,
+        avg_putts=putts_total,
+        gir_pct=gir_hits / holes,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Scorecard conditionals — what the reconstruction compares against
+# ──────────────────────────────────────────────────────────────────────────────
+
+#: Yardage grids the conditionals are solved on, per par.
+CONDITIONAL_GRIDS: Dict[int, np.ndarray] = {
+    3: np.arange(80, 265, 5, dtype=float),
+    4: np.arange(240, 505, 5, dtype=float),
+    5: np.arange(400, 625, 5, dtype=float),
+}
+
+#: Simulated plays per grid point when solving conditionals.
+CONDITIONAL_SAMPLES = 3000
+
+#: First-putt distance bands, in feet — these mirror the entry UI exactly
+#: ("Tap-in <3ft", "Short 3-10ft", "Mid 10-25ft", "Long 25ft+").
+FIRST_PUTT_BANDS: Dict[str, Tuple[float, float]] = {
+    "tap_in": (0.0, 3.0),
+    "short": (3.0, 10.0),
+    "mid": (10.0, 25.0),
+    "long": (25.0, float("inf")),
+}
+
+
+@dataclass
+class HoleConditionals:
+    """
+    Conditional expectations of hole play, per par, on a yardage grid.
+
+    Every baseline `scorecard_stats.py` compares a player against comes from
+    here — expectations under the surface's own model, conditioned on what the
+    scorecard reveals. That is what makes the four categories telescope exactly
+    and average to zero for a player whose game matches the model:
+
+      p_fw            P(tee shot finishes in the fairway)
+      v_hit           E[E(position after tee) | fairway hit]
+      v_miss          E[E(position after tee) | fairway missed], penalties included
+      e_fp_putts_gir  E[expected putts at the first-putt distance | GIR]
+      v_prechip       E[E(position before the first chip) | green missed in
+                      regulation and a chip was played]
+      bucket_gir      E[expected putts | first putt in band, green hit in reg]
+      bucket_chip     E[expected putts | first putt in band, after a chip]
+
+    By construction  p_fw · v_hit + (1 − p_fw) · v_miss = E_tee − 1,  so a
+    fairway split can move strokes between driving and the rest without
+    inventing any.
+
+    The bucket tables are the certainty equivalents of the entry UI's coarse
+    bands: reading a band at a single representative distance mis-prices it
+    (expected putts is nonlinear in distance and the within-band distribution
+    is skewed), and that mispricing was visible as a flat bias in putting SG.
+    """
+
+    p_fw: Dict[int, np.ndarray]
+    v_hit: Dict[int, np.ndarray]
+    v_miss: Dict[int, np.ndarray]
+    e_fp_putts_gir: Dict[int, np.ndarray]
+    v_prechip: Dict[int, np.ndarray]
+    bucket_gir: Dict[str, float]
+    bucket_chip: Dict[str, float]
+
+    def _lookup(self, table: Dict[int, np.ndarray], par: int, yardage: float) -> float:
+        grid = CONDITIONAL_GRIDS[par]
+        return float(np.interp(float(yardage), grid, table[par]))
+
+    def fairway_probability(self, par: int, yardage: float) -> float:
+        return self._lookup(self.p_fw, par, yardage)
+
+    def value_after_drive(self, par: int, yardage: float, hit: Optional[bool]) -> float:
+        if hit is True:
+            return self._lookup(self.v_hit, par, yardage)
+        if hit is False:
+            return self._lookup(self.v_miss, par, yardage)
+        p = self.fairway_probability(par, yardage)
+        return p * self._lookup(self.v_hit, par, yardage) + (1 - p) * self._lookup(
+            self.v_miss, par, yardage
+        )
+
+    def expected_first_putt_strokes(self, par: int, yardage: float) -> float:
+        return self._lookup(self.e_fp_putts_gir, par, yardage)
+
+    def prechip_value(self, par: int, yardage: float) -> float:
+        return self._lookup(self.v_prechip, par, yardage)
+
+    def first_putt_bucket_strokes(self, bucket: str, gir: bool) -> float:
+        """Expected putts for a recorded first-putt band."""
+        table = self.bucket_gir if gir else self.bucket_chip
+        return table[bucket]
+
+
+def solve_conditionals(surface: Surface, rng: Optional[np.random.Generator] = None) -> HoleConditionals:
+    """
+    Solve the scorecard conditionals for one surface by simulation.
+
+    Cells that a bracket practically never produces (a scratch player missing
+    every green on a 90-yard par 3) fall back to their unconditional
+    neighbours rather than NaN, so lookups stay total.
+    """
+    if rng is None:
+        rng = np.random.default_rng(SEED + 3)
+
+    p_fw: Dict[int, np.ndarray] = {}
+    v_hit: Dict[int, np.ndarray] = {}
+    v_miss: Dict[int, np.ndarray] = {}
+    e_fp: Dict[int, np.ndarray] = {}
+    v_pre: Dict[int, np.ndarray] = {}
+
+    gir_fp_samples: list = []
+    chip_fp_samples: list = []
+
+    for par, grid in CONDITIONAL_GRIDS.items():
+        reg = par - 2
+        n_pts = len(grid)
+        arr_pfw = np.zeros(n_pts)
+        arr_hit = np.zeros(n_pts)
+        arr_miss = np.zeros(n_pts)
+        arr_fp = np.zeros(n_pts)
+        arr_pre = np.zeros(n_pts)
+
+        for i, yards in enumerate(grid):
+            sim = simulate_holes(surface, float(yards), CONDITIONAL_SAMPLES, rng)
+            e_tee = surface.strokes(float(yards), "tee")
+
+            hit = sim.fw_hit
+            arr_pfw[i] = float(np.mean(hit)) if par > 3 else 0.0
+            arr_hit[i] = float(np.mean(sim.value_after_tee[hit])) if hit.any() else e_tee - 1.0
+            arr_miss[i] = float(np.mean(sim.value_after_tee[~hit])) if (~hit).any() else e_tee - 1.0
+
+            gir = sim.shots_to_green <= reg
+            if gir.any():
+                idx = np.clip(np.round(sim.first_putt_ft[gir]).astype(int), 0, MAX_PUTT_FT - 1)
+                arr_fp[i] = float(np.mean(surface.green_ft[idx]))
+                gir_fp_samples.append(sim.first_putt_ft[gir])
+            else:
+                arr_fp[i] = float(surface.green_ft[int(min(25.0, MAX_PUTT_FT - 1))])
+
+            pre = (~gir) & sim.chipped & ~np.isnan(sim.prechip_value)
+            if pre.any():
+                arr_pre[i] = float(np.mean(sim.prechip_value[pre]))
+            else:
+                arr_pre[i] = float(surface.strokes(15.0, "rough"))
+            if ((~gir) & sim.chipped).any():
+                chip_fp_samples.append(sim.first_putt_ft[(~gir) & sim.chipped])
+
+        p_fw[par] = arr_pfw
+        v_hit[par] = arr_hit
+        v_miss[par] = arr_miss
+        e_fp[par] = arr_fp
+        v_pre[par] = arr_pre
+
+    def band_table(samples: list) -> Dict[str, float]:
+        pooled = np.concatenate(samples) if samples else np.array([15.0])
+        idx = np.clip(np.round(pooled).astype(int), 0, MAX_PUTT_FT - 1)
+        values = surface.green_ft[idx]
+        out: Dict[str, float] = {}
+        for band, (lo, hi) in FIRST_PUTT_BANDS.items():
+            sel = (pooled > lo) & (pooled <= hi) if band != "tap_in" else (pooled <= hi)
+            if sel.any():
+                out[band] = float(np.mean(values[sel]))
+            else:
+                # Band the model never produces here: price its midpoint.
+                mid = min(hi, lo + 10.0) if np.isfinite(hi) else lo + 10.0
+                out[band] = float(surface.green_ft[int(min(mid, MAX_PUTT_FT - 1))])
+        return out
+
+    return HoleConditionals(
+        p_fw=p_fw,
+        v_hit=v_hit,
+        v_miss=v_miss,
+        e_fp_putts_gir=e_fp,
+        v_prechip=v_pre,
+        bucket_gir=band_table(gir_fp_samples),
+        bucket_chip=band_table(chip_fp_samples),
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
