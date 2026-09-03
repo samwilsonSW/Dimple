@@ -7,7 +7,27 @@
 
 ## Active
 
-### 1. Strokes-gained level calibration
+### 1. Rolling handicap index (server-owned)
+**Status:** Next up after the SG rework (PR #23) merges — agreed 2026-09-02.
+**What:** `handicap_index` arrives on the round payload and is never
+recomputed, so the SG bracket stays frozen at whatever the client sends. If
+the player improves, they play "above baseline" forever and zero-mean breaks.
+Compute it WHS-style on the server: differential =
+(adjusted gross − course rating) × 113 / slope, best 8 of last 20 with the
+WHS small-sample table below 20 differentials. Recompute after every posted
+round; the SG bracket and baselines read the live index, the client only
+displays it. Handicap *trend* = progress; SG = fingerprint at current level.
+Rating/slope already live on `tee_box` (both Optional — skip the
+differential when absent; 9-hole rounds use the existing prorate). Verify
+manual course entry captures rating/slope.
+**Where:** new `backend/app/core/handicap.py`; round submit path in
+`main.py`; `scorecard_stats.py` L273–280 already computes the same expected-
+score shape. `API_CONTRACT.md` first, per convention.
+**Done when:** posting a round updates the stored index, the next round's SG
+uses it, and a pytest with a fabricated improving sequence walks the index
+down.
+
+### 2. Strokes-gained level calibration
 **Status:** Ready to start — method agreed 2026-09-02.
 **What:** The surface under-counts putts, so bracket-average rounds total
 −2 (scratch) to −9 (25 hcp). Constrain the on-green landing distribution with
@@ -21,7 +41,7 @@ report section of `scripts/verify_sg.py`.
 **Done when:** the reality-alignment table in `verify_sg.py` reads near zero
 and `avg_score` stays a holdout.
 
-### 2. Shot-by-shot path onto the surface
+### 3. Shot-by-shot path onto the surface
 **Status:** Unstarted. Small branch after the SG rework merges.
 **What:** Detailed ingestion in `main.py` still computes per-shot SG from the
 retired hand-typed `baselines.py` (fails `audit_sg.py` 4/8) plus a flat
@@ -32,7 +52,7 @@ they exist to indict tables that stop existing.
 **Done when:** a round entered hole-by-hole and shot-by-shot produces the
 same four totals, and the old tables are gone.
 
-### 3. Verify coach streaming live
+### 4. Verify coach streaming live
 **Status:** Implemented, never exercised against the live server or device.
 **What:** `POST /coach/chat/stream` (SSE) exists to beat Cloudflare's 100s
 524 ceiling; the line-tagged reply format (`coach_format.py`) replaced JSON.
