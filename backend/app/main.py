@@ -885,7 +885,7 @@ def coach_chat(request: CoachChatRequest):
 
     llm_start = time.time()
     try:
-        result = generate_coach_answer(turn.system_prompt, turn.user_prompt)
+        result = generate_coach_answer(turn.system_prompt, turn.user_prompt, conversation_id=turn.conversation_id)
     except Exception as e:
         llm_elapsed = time.time() - llm_start
         logger.error(f"LLM generation failed after {llm_elapsed:.2f}s: {str(e)}")
@@ -1001,7 +1001,9 @@ def coach_chat_stream(request: CoachChatRequest):
             return None
 
         try:
-            for chunk in stream_coach_response(turn.system_prompt, turn.user_prompt):
+            for chunk in stream_coach_response(
+                turn.system_prompt, turn.user_prompt, conversation_id=turn.conversation_id
+            ):
                 for event in parser.feed(chunk):
                     payload = render(event)
                     if payload:

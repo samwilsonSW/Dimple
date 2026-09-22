@@ -6,7 +6,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 from app.core.config import get_settings
 from app.services.coach_format import (
@@ -77,6 +77,16 @@ llm_client = openai.OpenAI(
     api_key=llm_api_key,
     base_url=os.environ.get("OPENCODE_BASE_URL", "https://opencode.ai/zen/go/v1"),
     timeout=120.0,
+    default_headers={
+        # OpenCode Go requires these on all requests (2026-09-15 policy:
+        # requests without them get 400 MissingSessionID). Session header must
+        # be stable per-conversation for routing/prompt caching; a fixed app
+        # value would break their cache segmentation, so we send a per-request
+        # unique session id via extra headers at call sites where we have a
+        # conversation id, and this default satisfies the bare minimum.
+        "x-opencode-session": "dimple-backend",
+        "User-Agent": "dimple-backend/1.0",
+    },
 )
 # Model for coach responses — Kimi K2.6 via OpenCode Go
 # (deepseek-v4-flash is better/cheaper but requires China region opt-in)
@@ -131,12 +141,17 @@ def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
     return raw
 
 
-def stream_coach_response(system_prompt: str, user_prompt: str) -> Iterator[str]:
+def stream_coach_response(
+    system_prompt: str, user_prompt: str, conversation_id: Optional[int] = None
+) -> Iterator[str]:
     """Stream a coaching response as text deltas.
 
     The model writes in the line-tagged format (see `coach_format`), not JSON —
     so the caller can render prose the moment it arrives instead of waiting for
     a closing brace. Accumulates the full text for the response log.
+
+    ``conversation_id`` becomes the OpenCode Go session id so the provider can
+    route and cache per-conversation (their 2026-09 policy requires the header).
     """
     global _stream_usage_supported
 
@@ -145,6 +160,8 @@ def stream_coach_response(system_prompt: str, user_prompt: str) -> Iterator[str]
         {"role": "user", "content": user_prompt},
     ]
     kwargs = dict(model=LLM_MODEL, messages=messages, temperature=1.0, max_tokens=8000, stream=True)
+    if conversation_id is not None:
+        kwargs["extra_headers"] = {"x-opencode-session": f"dimple-conv-{conversation_id}"}
     if _stream_usage_supported:
         kwargs["stream_options"] = {"include_usage": True}
 
@@ -183,12 +200,16 @@ def stream_coach_response(system_prompt: str, user_prompt: str) -> Iterator[str]
             _log_response("".join(chunks), usage=usage, model=model_used)
 
 
-def generate_coach_answer(system_prompt: str, user_prompt: str) -> CoachAnswer:
+def generate_coach_answer(
+    system_prompt: str, user_prompt: str, conversation_id: Optional[int] = None
+) -> CoachAnswer:
     """Non-streaming path: run the stream to completion and parse it."""
     parser = CoachStreamParser()
 
     def events():
-        for chunk in stream_coach_response(system_prompt, user_prompt):
+        for chunk in stream_coach_response(
+            system_prompt, user_prompt, conversation_id=conversation_id
+        ):
             yield from parser.feed(chunk)
 
     return collect(events(), parser)
