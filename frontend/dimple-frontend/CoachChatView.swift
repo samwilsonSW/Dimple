@@ -91,20 +91,76 @@ final class CoachChatViewModel {
         failedText = nil
 
         Task { @MainActor in
+            // Index of the reply currently being written into, and the confidence
+            // the server sent before the first word arrived.
+            var replyIndex: Int?
+            var pendingConfidence: Int?
+
+            /// Create the assistant bubble on first content, not on `meta` — an
+            /// empty bubble sitting under the typing indicator looks broken.
+            func reply() -> Int {
+                if let i = replyIndex { return i }
+                messages.append(ChatMessage(role: .assistant, content: "", confidence: pendingConfidence))
+                let i = messages.count - 1
+                replyIndex = i
+                withAnimation(.easeOut(duration: 0.2)) { isSending = false }
+                return i
+            }
+
             do {
-                let resp = try await CoachService.shared.send(
+                for try await event in CoachService.shared.stream(
                     message: text,
                     conversationID: conversationID,
                     roundID: roundID
-                )
-                conversationID = resp.conversation_id
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    messages.append(resp.assistantMessage)
-                    isSending = false
+                ) {
+                    switch event {
+                    case .meta(let id, let confidence):
+                        conversationID = id
+                        pendingConfidence = confidence
+
+                    case .delta(let chunk):
+                        let i = reply()
+                        // Skip the leading blank lines the format can start with.
+                        if messages[i].content.isEmpty {
+                            let trimmed = chunk.drop { $0 == "\n" || $0 == " " }
+                            if trimmed.isEmpty { break }
+                            messages[i].content = String(trimmed)
+                        } else {
+                            messages[i].content += chunk
+                        }
+
+                    case .insight(let insight):
+                        let i = reply()
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            messages[i].insights.append(insight)
+                        }
+
+                    case .drill(let drill):
+                        let i = reply()
+                        // Drills are re-sent as their fields arrive; upsert so the
+                        // card fills in rather than duplicating.
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            if let existing = messages[i].drills.firstIndex(where: { $0.priority == drill.priority }) {
+                                messages[i].drills[existing] = drill
+                            } else {
+                                messages[i].drills.append(drill)
+                            }
+                        }
+
+                    case .done(let answer):
+                        let i = reply()
+                        messages[i].content = answer  // authoritative, already trimmed
+                    }
                 }
+                isSending = false
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch {
                 failedText = text
+                // Whatever already streamed stays on screen — the server saved it
+                // too, so the thread and the transcript agree.
+                if let i = replyIndex, messages[i].content.isEmpty, messages[i].drills.isEmpty {
+                    messages.remove(at: i)
+                }
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                     messages.append(ChatMessage(role: .error, content: error.localizedDescription))
                     isSending = false
@@ -523,15 +579,34 @@ struct DrillCard: View {
             if expanded {
                 Divider().padding(.horizontal, 12)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(coachMarkdown(drill.instructions))
-                        .font(.subheadline).lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "flag.fill")
-                            .font(.caption).foregroundStyle(Color.sageGreen).padding(.top, 2)
-                        Text(coachMarkdown(drill.expected_outcome))
-                            .font(.caption).foregroundStyle(Color(.secondaryLabel))
+                    if drill.steps.isEmpty {
+                        // Older payloads only carried the joined string.
+                        Text(coachMarkdown(drill.instructions))
+                            .font(.subheadline).lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(drill.steps.enumerated()), id: \.offset) { index, step in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Text("\(index + 1).")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                        .foregroundStyle(Color.champagneGold)
+                                        .frame(minWidth: 18, alignment: .leading)
+                                    Text(coachMarkdown(step))
+                                        .font(.subheadline).lineSpacing(4)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                    if !drill.expected_outcome.isEmpty {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "flag.fill")
+                                .font(.caption).foregroundStyle(Color.sageGreen).padding(.top, 2)
+                            Text(coachMarkdown(drill.expected_outcome))
+                                .font(.caption).foregroundStyle(Color(.secondaryLabel))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 .padding(12)

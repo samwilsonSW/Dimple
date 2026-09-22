@@ -1,13 +1,26 @@
 """LLM client for coach generation (OpenCode Go — OpenAI-compatible)."""
+import logging
 import openai
 import json
 import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from app.core.config import get_settings
+from typing import Iterator, Optional
 
+from app.core.config import get_settings
+from app.services.coach_format import (
+    FORMAT_INSTRUCTIONS,
+    CoachAnswer,
+    CoachStreamParser,
+    collect,
+)
+
+logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Some OpenAI-compatible providers reject `stream_options`. Probed once, then cached.
+_stream_usage_supported = True
 
 # ── Response logging ──
 LLM_LOG_DIR = Path(__file__).parent.parent.parent.parent / "data" / "llm_responses"
@@ -64,6 +77,16 @@ llm_client = openai.OpenAI(
     api_key=llm_api_key,
     base_url=os.environ.get("OPENCODE_BASE_URL", "https://opencode.ai/zen/go/v1"),
     timeout=120.0,
+    default_headers={
+        # OpenCode Go requires these on all requests (2026-09-15 policy:
+        # requests without them get 400 MissingSessionID). Session header must
+        # be stable per-conversation for routing/prompt caching; a fixed app
+        # value would break their cache segmentation, so we send a per-request
+        # unique session id via extra headers at call sites where we have a
+        # conversation id, and this default satisfies the bare minimum.
+        "x-opencode-session": "dimple-backend",
+        "User-Agent": "dimple-backend/1.0",
+    },
 )
 # Model for coach responses — Kimi K2.6 via OpenCode Go
 # (deepseek-v4-flash is better/cheaper but requires China region opt-in)
@@ -118,56 +141,75 @@ def generate_coach_response(system_prompt: str, user_prompt: str) -> str:
     return raw
 
 
-def generate_structured_coach_response(system_prompt: str, user_prompt: str) -> dict:
-    """Call LLM to generate a structured JSON coaching response."""
-    structured_system_prompt = (
-        system_prompt + "\n\n"
-        "You MUST respond with valid JSON only. No markdown, no prose outside the JSON. "
-        "Use this exact structure:\n"
-        "{\n"
-        '  "answer": "string — full natural-language coaching response",\n'
-        '  "confidence": number — integer 1-5,\n'
-        '  "key_insights": ["string", "string", ...],\n'
-        '  "drill_recommendations": [\n'
-        '    {\n'
-        '      "priority": number — integer 1+,\n'
-        '      "focus_area": "string — e.g. 6-iron push, lag putting",\n'
-        '      "drill_name": "string",\n'
-        '      "instructions": "string — step-by-step",\n'
-        '      "expected_outcome": "string — what success looks like"\n'
-        '    }\n'
-        '  ]\n'
-        "}"
-    )
+def stream_coach_response(
+    system_prompt: str, user_prompt: str, conversation_id: Optional[int] = None
+) -> Iterator[str]:
+    """Stream a coaching response as text deltas.
 
-    response = llm_client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {"role": "system", "content": structured_system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=1.0,
-        max_tokens=8000,
-    )
+    The model writes in the line-tagged format (see `coach_format`), not JSON —
+    so the caller can render prose the moment it arrives instead of waiting for
+    a closing brace. Accumulates the full text for the response log.
 
-    raw = response.choices[0].message.content.strip()
-    usage = response.usage.model_dump() if response.usage else None
-    model_used = response.model if response.model else LLM_MODEL
+    ``conversation_id`` becomes the OpenCode Go session id so the provider can
+    route and cache per-conversation (their 2026-09 policy requires the header).
+    """
+    global _stream_usage_supported
 
-    # Moonshot sometimes wraps JSON in markdown code blocks — strip them
-    if raw.startswith("```json"):
-        raw = raw[7:]
-    if raw.startswith("```"):
-        raw = raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
+    messages = [
+        {"role": "system", "content": system_prompt + FORMAT_INSTRUCTIONS},
+        {"role": "user", "content": user_prompt},
+    ]
+    kwargs = dict(model=LLM_MODEL, messages=messages, temperature=1.0, max_tokens=8000, stream=True)
+    if conversation_id is not None:
+        kwargs["extra_headers"] = {"x-opencode-session": f"dimple-conv-{conversation_id}"}
+    if _stream_usage_supported:
+        kwargs["stream_options"] = {"include_usage": True}
 
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        _log_response(raw, parsed=None, usage=usage, model=model_used)
-        raise ValueError(f"LLM returned invalid JSON: {e}\nRaw response:\n{raw}")
+        stream = llm_client.chat.completions.create(**kwargs)
+    except (openai.BadRequestError, TypeError) as exc:
+        # Not every OpenAI-compatible provider accepts `stream_options`. Lose the
+        # token accounting rather than the response, and stop asking.
+        if not _stream_usage_supported:
+            raise
+        logger.warning(f"Provider rejected stream_options, retrying without usage: {exc}")
+        _stream_usage_supported = False
+        kwargs.pop("stream_options", None)
+        stream = llm_client.chat.completions.create(**kwargs)
 
-    _log_response(raw, parsed=parsed, usage=usage, model=model_used)
-    return parsed
+    chunks: list[str] = []
+    usage = None
+    model_used = LLM_MODEL
+    try:
+        for event in stream:
+            if getattr(event, "usage", None):
+                usage = event.usage.model_dump()
+            if getattr(event, "model", None):
+                model_used = event.model
+            if not event.choices:
+                continue
+            delta = event.choices[0].delta
+            text = getattr(delta, "content", None)
+            if text:
+                chunks.append(text)
+                yield text
+    finally:
+        # Log whatever arrived, including on a mid-stream failure — a partial
+        # response is exactly what we want a record of.
+        if chunks:
+            _log_response("".join(chunks), usage=usage, model=model_used)
+
+
+def generate_coach_answer(
+    system_prompt: str, user_prompt: str, conversation_id: Optional[int] = None
+) -> CoachAnswer:
+    """Non-streaming path: run the stream to completion and parse it."""
+    parser = CoachStreamParser()
+
+    def events():
+        for chunk in stream_coach_response(
+            system_prompt, user_prompt, conversation_id=conversation_id
+        ):
+            yield from parser.feed(chunk)
+
+    return collect(events(), parser)

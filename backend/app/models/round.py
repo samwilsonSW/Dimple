@@ -247,11 +247,12 @@ class Message(BaseModel):
 
 
 class DrillRecommendation(BaseModel):
-    priority: int = Field(..., description="Priority order: 1 = highest")
-    focus_area: str = Field(..., description="e.g. '6-iron push', 'lag putting'")
-    drill_name: str = Field(..., description="Name of the drill")
-    instructions: str = Field(..., description="Step-by-step drill instructions")
-    expected_outcome: str = Field(..., description="What success looks like")
+    priority: int = Field(..., description="Priority order: 1 = highest (order of appearance)")
+    focus_area: str = Field("", description="e.g. '6-iron push', 'lag putting'")
+    drill_name: str = Field("", description="Name of the drill")
+    steps: List[str] = Field(default_factory=list, description="Drill steps, in order")
+    instructions: str = Field("", description="`steps` joined into one string, for older clients")
+    expected_outcome: str = Field("", description="What success looks like")
 
 
 class CoachChatResponse(BaseModel):

@@ -6,7 +6,7 @@
 
 ## Version
 
-`1.1.0` — matches `backend/app/main.py`
+`1.2.0` — matches `backend/app/main.py`
 
 ---
 
@@ -99,6 +99,13 @@ POST /api/v1/rounds
 - Per-hole entries are persisted to `hole_scores`, so rounds can be recomputed
   when the strokes-gained model changes. Failure to store them does not fail
   the request; the round and its stats still land.
+- The four `sg_*` figures telescope: their sum equals expected strokes from
+  the tee minus actual score, per hole, exactly. Handicaps above 25 are
+  measured against the 25 baseline (the calibration data ends there).
+  `penalty_strokes` has no separate SG term — a scorecard cannot attribute a
+  penalty to a swing; the cost lands in `sg_approach`'s stroke count and the
+  baselines price average penalty exposure, so ordinary penalty frequency
+  nets zero. See `docs/SG_REBUILD.md`, "State of play".
 - `manual_course.par_values` is the whole course; `strokes_over_under` and
   `avg_score_to_par` count only the holes present in `hole_data`, matched by
   `hole_number`. A front-nine round on an 18-hole manual course is scored
@@ -144,16 +151,62 @@ POST /api/v1/coach/chat
   "answer": "Your putting...",
   "confidence": 4,
   "key_insights": ["Putting: 36 putts/round"],
-  "drill_recommendations": [{"priority": 1, "drill_name": "Ladder Drill", "instructions": "..."}]
+  "drill_recommendations": [
+    {
+      "priority": 1,
+      "drill_name": "Ladder Drill",
+      "focus_area": "Distance control",
+      "steps": ["Putt to 10 feet", "Then 20, 30 and 40"],
+      "instructions": "1. Putt to 10 feet 2. Then 20, 30 and 40",
+      "expected_outcome": "All four inside three feet"
+    }
+  ]
 }
 ```
 
-**Confidence scale:**
+`steps` is the drill broken into ordered steps. `instructions` is the same
+content joined into one string, kept so a client built before 1.2.0 still
+renders something. Prefer `steps`.
+
+**Confidence scale** — derived from the data inventory server-side, not from the
+model. It answers "how much data backs this answer", so it is known before the
+LLM is called and is sent as the first streaming event.
 - 1: 1-2 rounds (asks follow-up)
 - 2: 3-5 rounds (early trends)
 - 3: 5+ rounds, no shots (scorecard patterns)
 - 4: With shot data (specific patterns)
 - 5: Rich shot + trend data
+
+**This endpoint cannot answer before the model finishes.** Cloudflare gives the
+origin 100s to start responding, and a long reply exceeds it — the app gets a
+524. It is kept for clients that predate 1.2.0; everything new should stream.
+
+---
+
+### Coach Chat (streaming)
+
+```
+POST /api/v1/coach/chat/stream
+```
+
+Same request body as `/coach/chat`. Responds with Server-Sent Events. The first
+bytes go out before any database work, which is what stops Cloudflare's 100s
+clock — a slow answer can no longer 524.
+
+| Event | Payload | Notes |
+|-------|---------|-------|
+| `meta` | `{conversation_id, confidence}` | Once, as soon as the conversation exists |
+| `delta` | `{text}` | Prose to append. Many of these. |
+| `insight` | `{text}` | One completed insight |
+| `drill` | `{index, priority, drill_name, focus_area, steps, instructions, expected_outcome}` | **Re-sent as fields arrive — upsert on `index`** |
+| `done` | `{answer}` | Full prose, already persisted |
+| `error` | `{detail}` | Terminal. Anything already streamed is still saved. |
+
+Lines starting with `:` are keepalives; ignore them. A `drill` arrives partially
+built — a card should paint its header and fill in steps as they stream.
+
+Errors after the first byte arrive as an `error` event, not an HTTP status: the
+headers are long gone by then. Clients must handle a 200 that fails midway.
 
 ---
 
@@ -194,6 +247,34 @@ GET /api/v1/rounds?user_id={uuid}&limit=20
 
 ---
 
+## The coach wire format
+
+The coach model answers in a line-tagged format, **not JSON**. Prose is the
+default; a line starting with `@` is structure:
+
+```
+Off the tee is where you're losing it.
+
+@insight Driver dispersion is 2x your 3-wood
+
+@drill Gate Drill
+@focus Driver face control
+@step Place two tees just wider than your driver head
+@win Ten clean swings before you move on
+```
+
+One line per tag; `@focus`/`@step`/`@win` attach to the `@drill` above them;
+`priority` is order of appearance. Parsed by
+`backend/app/services/coach_format.py`, which is also where the format
+instructions handed to the model live — change both together or neither.
+
+Why not JSON: it cannot be streamed (unreadable until the closing brace), one
+bad brace threw away a whole paid response as a 502, and a quarter of the output
+tokens were syntax. An unrecognised tag degrades to prose, so the worst case is
+a stray line rather than a lost reply.
+
+---
+
 ## Database Schema
 
 **`rounds`**
@@ -228,6 +309,8 @@ GET /api/v1/rounds?user_id={uuid}&limit=20
 - `gir_count`, `gir_percentage` int/numeric
 - `fairways_hit`, `fairways_possible`, `fairway_percentage` int/numeric
 - `sg_putting`, `sg_approach` numeric
+- `sg_short`, `sg_driving` numeric, nullable (migration 021) — null means the
+  round predates four-category attribution
 - `strokes_over_under` numeric
 - `avg_putts_per_hole`, `avg_score_to_par` numeric
 - `total_penalty_strokes` int, nullable — null means the round predates collection
@@ -269,7 +352,10 @@ seam — this table is the reason it exists.
 | Risk | Status / mitigation |
 |------|---------------------|
 | `match_shots` RPC is **case-sensitive** on `user_id` | Lowercase every UUID before sending. Uppercase fails silently — no error, just no matches. |
-| Coach latency exceeds mobile client timeouts | Measured ~95s on 2026-08-05. iOS `CoachService.send()` raised to 180s. Real fix is streaming/async. **Anything adding a round-trip to `/coach/chat` is a taste decision — escalate it.** |
+| Cloudflare 524s a slow `/coach/chat` | **Root cause of "couldn't reach the coach".** The API is behind Cloudflare, which allows the origin 100s to *start* responding. Reproduced 2026-08-29: a 125s reply returned HTTP 524, and the iOS error bubble showed it as unreachable. Fixed by `/coach/chat/stream` — first byte goes out before any DB work. The buffered endpoint still has this ceiling. |
+| Coach latency | ~95s measured 2026-08-05, still true. Streaming hides it rather than removing it: prose starts in seconds. The part streaming cannot hide is `prepare_coach_turn` — ~12 sequential Supabase calls before the first token. **Anything adding a round-trip to `/coach/chat` is a taste decision — escalate it.** |
+| "Couldn't reach the coach." is a generic title | `CoachChatView.swift` and `CoachChatScreen.tsx` show it for *every* send failure, including a 524 or a decode error. Read the second line of the bubble before believing it is a network problem. |
+| NULL columns from a later migration crash the prompt builders | **Fixed 2026-08-29.** Migration 021 added `sg_short`/`sg_driving` as nullable, so every round logged before it has NULL there. `dict.get(key, 0)` does not save you — the key exists, its value is `None` — and `f"{None:+.1f}"` raises `unsupported format string passed to NoneType.__format__`, which killed the whole coach turn. Stats are now rendered through `_num()` and show `n/a`, never a fabricated `0.0`. Apply the same care to any future nullable column. |
 | Backend→Supabase intermittent timeout on `/coach/chat` | Mitigated 2026-07 by connection pooling + making the conversation verify non-fatal (`fa7e17d`). Watch for recurrence rather than assuming it's gone. |
 | `GET /coach/conversations` and `/{id}/messages` require `user_id` | Missing → 422, not 500. Clients must always send it. |
 | GolfCourseAPI rate limit (50 req/day) | Cache aggressively in the Supabase `courses` table. |
@@ -293,7 +379,9 @@ seam — this table is the reason it exists.
 | 2026-07-14 | 0.7.0 | Replaced `/coach/ask` with `/coach/chat`. Added `/coach/conversations` and `/{id}/messages`. Removed the 25+ handicap gate. Data-source-aware prompts. |
 | 2026-08-06 | 0.7.1 | Added `manual_course` to `POST /rounds` (migration 019). Mutually exclusive with `course_id`; rejects `shots`. |
 | 2026-08-21 | 0.7.1 | Fix: `manual_course` stats summed all par values regardless of holes played, so partial rounds reported a wrong `strokes_over_under`. Now matched by `hole_number`. |
+| 2026-08-29 | 1.2.0 | Added `POST /coach/chat/stream` (SSE). The coach LLM no longer emits JSON — it writes the line-tagged format above, parsed by `coach_format.py`. `drill_recommendations` gains `steps`; `instructions` stays as a joined string for older clients. `confidence` is now computed from the data inventory rather than self-reported by the model, and conversation titling moved off the request path. |
 | 2026-08-28 | 1.1.0 | Added `first_putt` and `penalty_strokes` to `hole_data`, and the `hole_scores` table (migration 020). Per-hole data is now persisted rather than discarded, so rounds can be recomputed. `round_stats` gains `total_penalty_strokes` and `avg_first_putt_ft`. Both new fields are recorded but not yet used in the SG figures — see `docs/SG_REBUILD.md`. |
+| 2026-09-02 | 1.2.1 | Strokes-gained attribution rebuilt on the surface's own conditional expectations: the four `sg_*` values now telescope exactly to expected-minus-actual per hole, no legal scorecard raises (handicap > 18 with an unrecorded first putt used to crash stats out of the round silently), first-putt buckets priced at model certainty-equivalents, penalties documented as inside `sg_approach`'s counts. Shapes unchanged; every number changes slightly. Old rounds are recomputable from `hole_scores`. |
 
 `0.7.2` is proposed on `feature/coach-context-memory` (conversation summary,
 migration 020) and is **not** merged — see PR #16.
