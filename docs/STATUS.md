@@ -32,13 +32,17 @@
   throw away the whole paid call; now a bad tag costs one drill card.
 
 ### In Progress
-- Strokes-gained rebuild. The committed baselines are wrong by 5-17 strokes a
-  round (`cd backend && uv run python scripts/audit_sg.py`). A replacement is
-  solved from published shot dispersion and grades far better, but still runs
-  short on putts and scoring. Nothing is wired into the live SG path yet, so no
-  displayed number has changed. See `docs/SG_REBUILD.md`.
-- Round history still shows blank `P` and `F` chips. They stay blank until the
-  rebuilt baselines land — that is the actual blocker, not the wiring.
+- Strokes-gained consistency rework — `feature/sg-consistency-rework`, needs
+  review + merge. All four categories now attribute against the surface's own
+  conditional expectations: conservation exact, no crash at any handicap,
+  self-play ≈ 0, fabricated `broadie.py` data deleted, penalties documented
+  honestly, CI gate added (`scripts/verify_sg.py`). Rounds are recomputable
+  from `hole_scores` once merged — stored SG values predate the fix.
+  See the "State of play" section of `docs/SG_REBUILD.md`.
+- Still open after that merge: the level residual (surface under-counts putts;
+  bracket-average rounds total −2…−9) — calibration data work, and the
+  detailed shot-by-shot ingestion path still runs the retired hand-typed
+  baselines. Both tracked in `docs/SG_REBUILD.md`.
 
 ### Needs doing by hand
 - Migration 020 (`hole_scores`) is applied to the live project. Any other
