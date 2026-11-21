@@ -236,6 +236,12 @@ GET /api/v1/courses/{course_id}
 → {"course": {"id": "21027", "name": "...", "tee_data": {...}, "hole_data": {...}}}
 ```
 
+**Errors.** If the upstream course service (GolfCourseAPI.com) fails — bad key,
+outage, rate limit — both endpoints return **503** with `{"detail": "Course API error: ..."}`.
+They deliberately do not return 502: Cloudflare replaces an origin 502/504 with its
+own HTML error page, so clients never see the JSON. Clients must not display the
+response body to the user; show a generic message instead.
+
 ---
 
 ### Round History

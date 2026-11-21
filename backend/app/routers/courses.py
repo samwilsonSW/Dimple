@@ -23,7 +23,9 @@ def search_course_by_name(
     try:
         results = search_courses(q, limit=limit)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Course API error: {str(e)}")
+        # 503, not 502: Cloudflare replaces an origin 502/504 with its own HTML
+        # error page, which hides this detail from the client.
+        raise HTTPException(status_code=503, detail=f"Course API error: {str(e)}")
 
     return {
         "query": q,
@@ -60,7 +62,8 @@ def get_course(course_id: str):
     try:
         course_data = get_course_details(course_id)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Course API error: {str(e)}")
+        # 503, not 502: see search_course_by_name.
+        raise HTTPException(status_code=503, detail=f"Course API error: {str(e)}")
 
     # 3) Cache in Supabase
     try:
