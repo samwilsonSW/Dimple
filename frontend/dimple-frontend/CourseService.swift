@@ -45,8 +45,12 @@ class CourseService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? "unknown error"
-            throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: body])
+            // Never show the response body: behind Cloudflare it can be a full
+            // HTML error page rather than the API's JSON.
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw URLError(.badServerResponse, userInfo: [
+                NSLocalizedDescriptionKey: "Couldn't load courses right now. Please try again in a moment. (\(status))"
+            ])
         }
 
         return try JSONDecoder().decode(T.self, from: data)
